@@ -7,6 +7,8 @@ import healthRoutes from './routes/healthRoutes.js';
 import userRoutes from './src/routes/userRoutes.js';
 import clubRoutes from './src/routes/clubRoutes.js';
 import projectRoutes from './src/routes/projectRoutes.js';
+import { clubJoinRouter, projectJoinRouter, joinRequestRouter } from './src/routes/joinRequestRoutes.js';
+import { projectMentorRouter, mentorRouter } from './src/routes/projectMentorRoutes.js';
 
 // ─── App Setup ────────────────────────────────────────────────────────────────
 const app = express();
@@ -29,6 +31,11 @@ app.use('/api', healthRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/clubs', clubRoutes);
 app.use('/api/projects', projectRoutes);
+app.use('/api/clubs', clubJoinRouter);         // POST /api/clubs/:clubId/join
+app.use('/api/projects', projectJoinRouter);   // POST /api/projects/:projectId/join
+app.use('/api/join-requests', joinRequestRouter); // GET reviewer/student, PATCH approve/reject
+app.use('/api/projects', projectMentorRouter);    // POST/GET/PATCH/DELETE /api/projects/:id/mentors
+app.use('/api/mentors', mentorRouter);            // GET /api/mentors/:mentorId/projects
 
 // ─── 404 Fallback ─────────────────────────────────────────────────────────────
 app.use((_req, res) => {
