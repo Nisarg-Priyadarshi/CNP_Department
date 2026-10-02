@@ -10,6 +10,7 @@ import projectRoutes from './src/routes/projectRoutes.js';
 import { clubJoinRouter, projectJoinRouter, joinRequestRouter } from './src/routes/joinRequestRoutes.js';
 import { projectMentorRouter, mentorRouter } from './src/routes/projectMentorRoutes.js';
 import projectUpdateRoutes from './src/routes/projectUpdateRoutes.js';
+import eventRoutes, { clubEventsRouter } from './src/routes/eventRoutes.js';
 
 // ─── App Setup ────────────────────────────────────────────────────────────────
 const app = express();
@@ -38,6 +39,8 @@ app.use('/api/join-requests', joinRequestRouter); // GET reviewer/student, PATCH
 app.use('/api/projects', projectMentorRouter);    // POST/GET/PATCH/DELETE /api/projects/:id/mentors
 app.use('/api/mentors', mentorRouter);            // GET /api/mentors/:mentorId/projects
 app.use('/api/projects', projectUpdateRoutes);    // Task 2F: updates + feedback
+app.use('/api/events', eventRoutes);              // Task 2G: events CRUD + upcoming
+app.use('/api/clubs', clubEventsRouter);           // Task 2G: GET /api/clubs/:clubId/events
 
 // ─── 404 Fallback ─────────────────────────────────────────────────────────────
 app.use((_req, res) => {

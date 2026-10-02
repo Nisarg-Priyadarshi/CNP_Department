@@ -1,13 +1,21 @@
 /**
  * Task 2F — Project Updates & Mentor Feedback Frontend
+ * Task 2G — Club Events Management Frontend
  *
  * Single-page application (vanilla TS + Vite).
  * Communicates with backend at http://localhost:5000.
  *
- * Roles supported:
- *   - student      → create updates, view updates, view feedback for own projects
+ * Roles supported for 2F:
+ *   - student        → create updates, view updates, view feedback for own projects
  *   - faculty_mentor → view updates, add feedback for assigned projects
  *   - project_admin  → view updates + feedback for any project
+ *
+ * Roles supported for 2G:
+ *   - student             → view upcoming events, view event details, view club events (read-only)
+ *   - faculty_coordinator → create/edit/delete events for their assigned club
+ *   - club_admin          → create/edit/delete events for any club
+ *   - faculty_mentor      → view events (read-only)
+ *   - project_admin       → view events (read-only)
  */
 
 import './app.css';
@@ -29,15 +37,36 @@ interface ProjectFeedback {
   updateId: { _id: string; title: string } | null; feedbackText: string; createdAt: string;
 }
 
+interface Club { _id: string; name: string; description: string; facultyCoordinatorId?: string | { _id: string; name: string }; }
+
+interface ClubEvent {
+  _id: string;
+  title: string;
+  description: string;
+  clubId: { _id: string; name: string } | string;
+  eventDate: string;
+  location: string;
+  createdBy: { _id: string; name: string; role: string } | string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════════════════════════════════════════
 
-let currentUserId  = '';
-let currentRole    = 'student';
+// 2F state
+let currentUserId    = '';
+let currentRole      = 'student';
 let currentProjectId = '';
 let allProjects: Project[] = [];
-let activeTab      = 'updates';
+let activeTab        = 'updates';
+
+// 2G state
+let allClubs: Club[]         = [];
+let currentClubId            = '';
+let eventsMainSection        = 'upcoming'; // 'upcoming' | 'manage' | 'club'
+let mainSection              = 'projects'; // 'projects' | 'events'
 
 // ══════════════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -60,6 +89,28 @@ function formatDate(iso: string) {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
+}
+
+function formatEventDate(iso: string) {
+  const d = new Date(iso);
+  return {
+    day:   d.toLocaleDateString('en-IN', { day: '2-digit' }),
+    month: d.toLocaleDateString('en-IN', { month: 'short' }),
+    year:  d.toLocaleDateString('en-IN', { year: 'numeric' }),
+    time:  d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+    full:  d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+  };
+}
+
+function toLocalDatetimeInput(iso: string): string {
+  // Convert ISO string to datetime-local input value (YYYY-MM-DDTHH:MM)
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function isUpcoming(eventDate: string): boolean {
+  return new Date(eventDate) >= new Date();
 }
 
 function roleBadge(role: string) {
@@ -90,7 +141,7 @@ function setLoading(id: string, loading: boolean) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// FETCH HELPERS
+// ── 2F FETCH HELPERS ──────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 
 async function fetchProjects(): Promise<Project[]> {
@@ -124,7 +175,31 @@ async function fetchUpdateFeedback(projectId: string, updateId: string, userId: 
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// RENDER FUNCTIONS
+// ── 2G FETCH HELPERS ──────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function fetchClubs(): Promise<Club[]> {
+  const data = await api<{ data: Club[] }>('GET', '/clubs');
+  return data.data;
+}
+
+async function fetchUpcomingEvents(): Promise<ClubEvent[]> {
+  const data = await api<{ data: ClubEvent[] }>('GET', '/events/upcoming');
+  return data.data;
+}
+
+async function fetchAllEvents(): Promise<ClubEvent[]> {
+  const data = await api<{ data: ClubEvent[] }>('GET', '/events');
+  return data.data;
+}
+
+async function fetchClubEvents(clubId: string): Promise<ClubEvent[]> {
+  const data = await api<{ data: ClubEvent[] }>('GET', `/clubs/${clubId}/events`);
+  return data.data;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── 2F RENDER FUNCTIONS ───────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 
 function renderProjectSelector(projects: Project[]) {
@@ -263,7 +338,7 @@ async function renderFeedbackTab() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ACTIONS
+// ── 2F ACTIONS ────────────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 
 async function handleCreateUpdate(e: Event) {
@@ -306,7 +381,6 @@ async function handleDeleteUpdate(updateId: string) {
 }
 
 function openEditModal(updateId: string, title: string, description: string) {
-  // Remove any existing modal
   document.getElementById('edit-modal')?.remove();
 
   const overlay = document.createElement('div');
@@ -382,7 +456,252 @@ async function handleAddFeedback(e: Event) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// MAIN RENDER
+// ── 2G EVENT RENDER FUNCTIONS ────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+function renderEventCard(ev: ClubEvent, showActions: boolean): string {
+  const d = formatEventDate(ev.eventDate);
+  const clubName = typeof ev.clubId === 'object' ? ev.clubId.name : 'Unknown Club';
+  const past = !isUpcoming(ev.eventDate);
+  const statusPill = past
+    ? '<span class="past-label">Past</span>'
+    : '<span class="upcoming-label">Upcoming</span>';
+
+  const actions = showActions ? `
+    <div class="event-actions">
+      <button class="btn btn-ghost btn-sm" data-edit-event="${ev._id}">✏️ Edit</button>
+      <button class="btn btn-danger btn-sm" data-delete-event="${ev._id}">🗑 Delete</button>
+    </div>` : '<div></div>';
+
+  return `
+    <div class="event-card ${past ? 'past' : ''}" data-event-id="${ev._id}">
+      <div class="event-date-badge">
+        <span class="ev-month">${d.month}</span>
+        <span class="ev-day">${d.day}</span>
+        <span class="ev-year">${d.year}</span>
+      </div>
+      <div class="event-body">
+        <div class="event-title">${ev.title}</div>
+        <div class="event-meta">
+          <span>🏛 <span class="club-pill">${clubName}</span></span>
+          <span>🕐 ${d.time}</span>
+          <span>📍 ${ev.location}</span>
+          ${statusPill}
+        </div>
+        <div class="event-desc">${ev.description}</div>
+      </div>
+      ${actions}
+    </div>`;
+}
+
+function attachEventCardListeners(container: HTMLElement, events: ClubEvent[]) {
+  container.querySelectorAll('[data-edit-event]').forEach(btn => {
+    const eventId = btn.getAttribute('data-edit-event')!;
+    const ev = events.find(e => e._id === eventId);
+    if (ev) btn.addEventListener('click', () => openEventEditModal(ev));
+  });
+  container.querySelectorAll('[data-delete-event]').forEach(btn => {
+    const eventId = btn.getAttribute('data-delete-event')!;
+    btn.addEventListener('click', () => handleDeleteEvent(eventId));
+  });
+}
+
+async function renderUpcomingEventsSection() {
+  const container = document.getElementById('events-list');
+  if (!container) return;
+  setLoading('events-list', true);
+  try {
+    const events = await fetchUpcomingEvents();
+    if (!events.length) {
+      container.innerHTML = `<div class="empty-state"><div class="emoji">🗓</div><p>No upcoming events at the moment.</p></div>`;
+      return;
+    }
+    container.innerHTML = events.map(ev => renderEventCard(ev, false)).join('');
+  } catch (e: unknown) {
+    container.innerHTML = `<div class="empty-state"><div class="emoji">⚠️</div><p>${(e as Error).message}</p></div>`;
+  }
+}
+
+async function renderManageEventsSection() {
+  const container = document.getElementById('events-list');
+  if (!container) return;
+  setLoading('events-list', true);
+  try {
+    const events = await fetchAllEvents();
+    if (!events.length) {
+      container.innerHTML = `<div class="empty-state"><div class="emoji">🗓</div><p>No events found.</p></div>`;
+      return;
+    }
+    const canWrite = currentRole === 'club_admin' || currentRole === 'faculty_coordinator';
+    container.innerHTML = events.map(ev => renderEventCard(ev, canWrite)).join('');
+    if (canWrite) {
+      attachEventCardListeners(container, events);
+    }
+  } catch (e: unknown) {
+    container.innerHTML = `<div class="empty-state"><div class="emoji">⚠️</div><p>${(e as Error).message}</p></div>`;
+  }
+}
+
+async function renderClubEventsSection() {
+  const container = document.getElementById('events-list');
+  if (!container) return;
+  if (!currentClubId) {
+    container.innerHTML = `<div class="empty-state"><div class="emoji">🏛</div><p>Select a club to view its events.</p></div>`;
+    return;
+  }
+  setLoading('events-list', true);
+  try {
+    const events = await fetchClubEvents(currentClubId);
+    if (!events.length) {
+      container.innerHTML = `<div class="empty-state"><div class="emoji">🗓</div><p>No events for this club yet.</p></div>`;
+      return;
+    }
+    const canWrite = currentRole === 'club_admin' || currentRole === 'faculty_coordinator';
+    container.innerHTML = events.map(ev => renderEventCard(ev, canWrite)).join('');
+    if (canWrite) {
+      attachEventCardListeners(container, events);
+    }
+  } catch (e: unknown) {
+    container.innerHTML = `<div class="empty-state"><div class="emoji">⚠️</div><p>${(e as Error).message}</p></div>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── 2G EVENT ACTIONS ─────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function handleCreateEvent(e: Event) {
+  e.preventDefault();
+  if (!currentUserId) { toast('Please enter your User ID first', 'error'); return; }
+  const form = e.target as HTMLFormElement;
+  const title       = (form.querySelector('#ev-title') as HTMLInputElement).value.trim();
+  const description = (form.querySelector('#ev-desc') as HTMLTextAreaElement).value.trim();
+  const eventDate   = (form.querySelector('#ev-date') as HTMLInputElement).value;
+  const location    = (form.querySelector('#ev-location') as HTMLInputElement).value.trim();
+  const clubId      = (form.querySelector('#ev-club') as HTMLSelectElement)?.value || currentClubId;
+
+  if (!title || !description || !eventDate || !location || !clubId) {
+    toast('All fields are required', 'error'); return;
+  }
+
+  const btn = form.querySelector('button[type="submit"]') as HTMLButtonElement;
+  btn.disabled = true;
+  try {
+    await api('POST', '/events', {
+      userId: currentUserId,
+      title, description, clubId,
+      eventDate: new Date(eventDate).toISOString(),
+      location,
+    });
+    toast('Event created successfully!');
+    form.reset();
+    // Refresh the list
+    if (eventsMainSection === 'manage') renderManageEventsSection();
+    else if (eventsMainSection === 'club') renderClubEventsSection();
+    else renderUpcomingEventsSection();
+  } catch (err: unknown) {
+    toast((err as Error).message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function handleDeleteEvent(eventId: string) {
+  if (!confirm('Delete this event?')) return;
+  try {
+    await api('DELETE', `/events/${eventId}`, { userId: currentUserId });
+    toast('Event deleted.');
+    if (eventsMainSection === 'manage') renderManageEventsSection();
+    else if (eventsMainSection === 'club') renderClubEventsSection();
+  } catch (err: unknown) {
+    toast((err as Error).message, 'error');
+  }
+}
+
+function openEventEditModal(ev: ClubEvent) {
+  document.getElementById('event-edit-modal')?.remove();
+
+  const clubName = typeof ev.clubId === 'object' ? ev.clubId.name : 'Club';
+  const clubId   = typeof ev.clubId === 'object' ? ev.clubId._id : ev.clubId;
+
+  const clubSelectHtml = currentRole === 'club_admin'
+    ? `<div class="form-row">
+        <label for="eev-club">Club</label>
+        <select id="eev-club">
+          ${allClubs.map(c => `<option value="${c._id}" ${c._id === clubId ? 'selected' : ''}>${c.name}</option>`).join('')}
+        </select>
+       </div>`
+    : `<div class="form-row"><label>Club</label><input type="text" value="${clubName}" disabled /></div>`;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'event-edit-modal';
+  overlay.style.cssText = `
+    position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1000;
+    display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;`;
+  overlay.innerHTML = `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);
+      padding:24px;width:100%;max-width:520px;box-shadow:var(--shadow);margin:auto">
+      <h3 style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:18px">✏️ Edit Event</h3>
+      <div class="form-row">
+        <label for="eev-title">Title *</label>
+        <input type="text" id="eev-title" value="${ev.title.replace(/"/g, '&quot;')}" />
+      </div>
+      <div class="form-row">
+        <label for="eev-desc">Description *</label>
+        <textarea id="eev-desc" rows="4">${ev.description}</textarea>
+      </div>
+      <div class="form-row">
+        <label for="eev-date">Event Date &amp; Time *</label>
+        <input type="datetime-local" id="eev-date" value="${toLocalDatetimeInput(ev.eventDate)}" />
+      </div>
+      <div class="form-row">
+        <label for="eev-location">Location *</label>
+        <input type="text" id="eev-location" value="${ev.location.replace(/"/g, '&quot;')}" />
+      </div>
+      ${clubSelectHtml}
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+        <button class="btn btn-ghost" id="eev-cancel">Cancel</button>
+        <button class="btn btn-primary" id="eev-save">Save Changes</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#eev-cancel')!.addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#eev-save')!.addEventListener('click', async () => {
+    const newTitle    = (overlay.querySelector('#eev-title') as HTMLInputElement).value.trim();
+    const newDesc     = (overlay.querySelector('#eev-desc') as HTMLTextAreaElement).value.trim();
+    const newDate     = (overlay.querySelector('#eev-date') as HTMLInputElement).value;
+    const newLocation = (overlay.querySelector('#eev-location') as HTMLInputElement).value.trim();
+    const newClubId   = currentRole === 'club_admin'
+      ? (overlay.querySelector('#eev-club') as HTMLSelectElement).value
+      : clubId;
+
+    if (!newTitle || !newDesc || !newDate || !newLocation) {
+      toast('All fields are required', 'error'); return;
+    }
+    const saveBtn = overlay.querySelector('#eev-save') as HTMLButtonElement;
+    saveBtn.disabled = true;
+    try {
+      await api('PUT', `/events/${ev._id}`, {
+        userId: currentUserId,
+        title: newTitle, description: newDesc,
+        eventDate: new Date(newDate).toISOString(),
+        location: newLocation,
+        clubId: newClubId,
+      });
+      toast('Event updated!');
+      overlay.remove();
+      if (eventsMainSection === 'manage') renderManageEventsSection();
+      else if (eventsMainSection === 'club') renderClubEventsSection();
+    } catch (err: unknown) {
+      toast((err as Error).message, 'error');
+      saveBtn.disabled = false;
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── MAIN RENDER ───────────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 
 function renderApp() {
@@ -393,7 +712,7 @@ function renderApp() {
         <div class="dot"></div>
         CNP Department
       </div>
-      <span class="header-badge">Task 2F</span>
+      <span class="header-badge">Tasks 2F &amp; 2G</span>
     </header>
 
     <main>
@@ -406,19 +725,21 @@ function renderApp() {
         <div class="form-row">
           <label for="input-role">Your Role</label>
           <select id="input-role">
-            <option value="student"       ${currentRole === 'student'        ? 'selected' : ''}>Student</option>
-            <option value="faculty_mentor" ${currentRole === 'faculty_mentor' ? 'selected' : ''}>Faculty Mentor</option>
-            <option value="project_admin"  ${currentRole === 'project_admin'  ? 'selected' : ''}>Project Admin</option>
+            <option value="student"             ${currentRole === 'student'             ? 'selected' : ''}>Student</option>
+            <option value="faculty_coordinator" ${currentRole === 'faculty_coordinator' ? 'selected' : ''}>Faculty Coordinator</option>
+            <option value="faculty_mentor"      ${currentRole === 'faculty_mentor'      ? 'selected' : ''}>Faculty Mentor</option>
+            <option value="project_admin"       ${currentRole === 'project_admin'       ? 'selected' : ''}>Project Admin</option>
+            <option value="club_admin"          ${currentRole === 'club_admin'          ? 'selected' : ''}>Club Admin</option>
           </select>
         </div>
-        <div class="form-row">
-          <label for="project-select">Project</label>
-          <select id="project-select">
-            <option value="">— loading projects —</option>
-          </select>
-        </div>
-        <button class="btn btn-primary" id="btn-load" style="flex-shrink:0">Load</button>
+        <button class="btn btn-primary" id="btn-apply" style="flex-shrink:0">Apply Role</button>
       </div>
+
+      <!-- ─── Main Navigation ─── -->
+      <nav class="main-nav">
+        <button class="main-nav-btn ${mainSection === 'events' ? 'active' : ''}" id="nav-events">🗓 Events (2G)</button>
+        <button class="main-nav-btn ${mainSection === 'projects' ? 'active' : ''}" id="nav-projects">📋 Project Updates (2F)</button>
+      </nav>
 
       <!-- ─── Content area ─── -->
       <div id="content-area"></div>
@@ -427,17 +748,206 @@ function renderApp() {
     <div id="toast-container"></div>
   `;
 
-  // Wire config bar
-  document.getElementById('btn-load')!.addEventListener('click', onLoad);
+  document.getElementById('btn-apply')!.addEventListener('click', onApplyRole);
   document.getElementById('input-role')!.addEventListener('change', (e) => {
     currentRole = (e.target as HTMLSelectElement).value;
   });
+
+  document.getElementById('nav-events')!.addEventListener('click', () => {
+    mainSection = 'events';
+    document.getElementById('nav-events')!.classList.add('active');
+    document.getElementById('nav-projects')!.classList.remove('active');
+    renderEventsSection();
+  });
+
+  document.getElementById('nav-projects')!.addEventListener('click', () => {
+    mainSection = 'projects';
+    document.getElementById('nav-projects')!.classList.add('active');
+    document.getElementById('nav-events')!.classList.remove('active');
+    renderProjectsSection();
+  });
+
+  // Load clubs for events
+  fetchClubs().then(c => { allClubs = c; }).catch(() => {});
+
+  // Render default section
+  if (mainSection === 'events') renderEventsSection();
+  else renderProjectsSection();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// EVENTS SECTION (2G)
+// ──────────────────────────────────────────────────────────────────────────────
+
+function renderEventsSection() {
+  const area = document.getElementById('content-area')!;
+  const canWrite = currentRole === 'club_admin' || currentRole === 'faculty_coordinator';
+
+  // Sub-tabs
+  const subTabs = `
+    <div class="tab-bar" style="margin-bottom:20px">
+      <button class="tab-btn ${eventsMainSection === 'upcoming' ? 'active' : ''}" id="ev-tab-upcoming">🔮 Upcoming Events</button>
+      ${canWrite ? `<button class="tab-btn ${eventsMainSection === 'manage' ? 'active' : ''}" id="ev-tab-manage">⚙️ Manage All Events</button>` : ''}
+      <button class="tab-btn ${eventsMainSection === 'club' ? 'active' : ''}" id="ev-tab-club">🏛 By Club</button>
+    </div>`;
+
+  // Create event form (only for write roles)
+  const createForm = canWrite ? `
+    <div class="form-panel" id="ev-create-panel">
+      <h3><span class="icon">➕</span> Create New Event</h3>
+      <form id="form-create-event">
+        <div class="form-row">
+          <label for="ev-title">Title *</label>
+          <input type="text" id="ev-title" placeholder="e.g. Annual Music Night" required />
+        </div>
+        <div class="form-row">
+          <label for="ev-desc">Description *</label>
+          <textarea id="ev-desc" placeholder="Describe this event..." rows="3" required></textarea>
+        </div>
+        <div class="form-row">
+          <label for="ev-date">Event Date &amp; Time *</label>
+          <input type="datetime-local" id="ev-date" required />
+        </div>
+        <div class="form-row">
+          <label for="ev-location">Location *</label>
+          <input type="text" id="ev-location" placeholder="e.g. University Auditorium" required />
+        </div>
+        ${currentRole === 'club_admin' ? `
+        <div class="form-row">
+          <label for="ev-club">Club *</label>
+          <select id="ev-club">
+            <option value="">— Select a club —</option>
+            ${allClubs.map(c => `<option value="${c._id}">${c.name}</option>`).join('')}
+          </select>
+        </div>` : `
+        <div class="form-row">
+          <label for="ev-club">Club *</label>
+          <select id="ev-club">
+            <option value="">— Select your assigned club —</option>
+            ${allClubs.map(c => `<option value="${c._id}">${c.name}</option>`).join('')}
+          </select>
+        </div>`}
+        <button type="submit" class="btn btn-primary" id="btn-create-event">🚀 Create Event</button>
+      </form>
+    </div>` : '';
+
+  // Club filter (for By Club tab)
+  const clubFilter = `
+    <div class="config-bar" id="club-filter-bar" style="${eventsMainSection !== 'club' ? 'display:none' : 'margin-bottom:16px'}">
+      <div class="form-row">
+        <label for="ev-club-select">Select Club</label>
+        <select id="ev-club-select">
+          <option value="">— Choose a club —</option>
+          ${allClubs.map(c => `<option value="${c._id}" ${c._id === currentClubId ? 'selected' : ''}>${c.name}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn btn-primary" id="btn-load-club-events" style="flex-shrink:0">View Events</button>
+    </div>`;
+
+  area.innerHTML = `
+    <h2 class="section-title">🗓 Events</h2>
+    <p class="section-sub">Manage and view university club events.</p>
+    ${subTabs}
+    ${createForm}
+    ${clubFilter}
+    <div class="section-label" id="events-section-label">Upcoming Events</div>
+    <div id="events-list"></div>
+  `;
+
+  // Sub-tab click handlers
+  document.getElementById('ev-tab-upcoming')?.addEventListener('click', () => {
+    eventsMainSection = 'upcoming';
+    updateEventsSubTabs();
+    document.getElementById('club-filter-bar')!.style.display = 'none';
+    document.getElementById('events-section-label')!.textContent = 'Upcoming Events';
+    renderUpcomingEventsSection();
+  });
+  document.getElementById('ev-tab-manage')?.addEventListener('click', () => {
+    eventsMainSection = 'manage';
+    updateEventsSubTabs();
+    document.getElementById('club-filter-bar')!.style.display = 'none';
+    document.getElementById('events-section-label')!.textContent = 'All Events';
+    renderManageEventsSection();
+  });
+  document.getElementById('ev-tab-club')?.addEventListener('click', () => {
+    eventsMainSection = 'club';
+    updateEventsSubTabs();
+    document.getElementById('club-filter-bar')!.style.display = '';
+    document.getElementById('events-section-label')!.textContent = 'Club Events';
+    renderClubEventsSection();
+  });
+
+  // Club filter button
+  document.getElementById('btn-load-club-events')?.addEventListener('click', () => {
+    currentClubId = (document.getElementById('ev-club-select') as HTMLSelectElement).value;
+    renderClubEventsSection();
+  });
+
+  // Create event form
+  if (canWrite) {
+    document.getElementById('form-create-event')?.addEventListener('submit', handleCreateEvent);
+  }
+
+  // Render initial content based on eventsMainSection
+  if (eventsMainSection === 'upcoming') renderUpcomingEventsSection();
+  else if (eventsMainSection === 'manage') renderManageEventsSection();
+  else {
+    document.getElementById('club-filter-bar')!.style.display = '';
+    renderClubEventsSection();
+  }
+}
+
+function updateEventsSubTabs() {
+  const tabs = ['upcoming', 'manage', 'club'];
+  tabs.forEach(t => {
+    const el = document.getElementById(`ev-tab-${t}`);
+    if (!el) return;
+    if (t === eventsMainSection) el.classList.add('active');
+    else el.classList.remove('active');
+  });
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// PROJECTS SECTION (2F)
+// ──────────────────────────────────────────────────────────────────────────────
+
+function renderProjectsSection() {
+  const area = document.getElementById('content-area')!;
+  area.innerHTML = `
+    <h2 class="section-title">📋 Project Updates & Feedback</h2>
+    <p class="section-sub">Manage project updates and mentor feedback.</p>
+    <!-- ─── Project Config ─── -->
+    <div class="config-bar" style="margin-bottom:20px">
+      <div class="form-row">
+        <label for="project-select">Project</label>
+        <select id="project-select">
+          <option value="">— loading projects —</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" id="btn-load" style="flex-shrink:0">Load Project</button>
+    </div>
+    <div id="proj-content-area"></div>
+  `;
+
+  document.getElementById('btn-load')!.addEventListener('click', onLoad);
   document.getElementById('project-select')!.addEventListener('change', (e) => {
     currentProjectId = (e.target as HTMLSelectElement).value;
   });
 
-  // Pre-load project list for selector
+  // Pre-load project list
   fetchProjects().then(p => { allProjects = p; renderProjectSelector(p); }).catch(() => {});
+}
+
+async function onApplyRole() {
+  currentUserId = (document.getElementById('input-user-id') as HTMLInputElement).value.trim();
+  currentRole   = (document.getElementById('input-role') as HTMLSelectElement).value;
+
+  if (!currentUserId) { toast('Please enter your User ID', 'error'); return; }
+  toast(`Role applied: ${currentRole}`);
+
+  // Re-render current section with new role
+  if (mainSection === 'events') renderEventsSection();
+  else renderProjectsSection();
 }
 
 async function onLoad() {
@@ -447,7 +957,6 @@ async function onLoad() {
 
   if (!currentUserId) { toast('Please enter your User ID', 'error'); return; }
 
-  // For student/mentor, load their specific projects
   try {
     if (currentRole === 'student') {
       const projs = await fetchStudentProjects(currentUserId);
@@ -471,11 +980,11 @@ async function onLoad() {
 
   if (!currentProjectId) { toast('Please select a project', 'error'); return; }
 
-  renderContentArea();
+  renderProjContentArea();
 }
 
-function renderContentArea() {
-  const area = document.getElementById('content-area')!;
+function renderProjContentArea() {
+  const area = document.getElementById('proj-content-area')!;
   area.innerHTML = `
     <div class="tab-bar">
       <button class="tab-btn ${activeTab === 'updates'  ? 'active' : ''}" id="tab-updates">📋 Project Updates</button>
@@ -504,7 +1013,6 @@ async function renderTabContent() {
   const tab = document.getElementById('tab-content')!;
 
   if (activeTab === 'updates') {
-    // Get current updates for the feedback add-form dropdown (only for mentor/admin)
     let updatesForSelect: ProjectUpdate[] = [];
     try {
       updatesForSelect = await fetchUpdates(currentProjectId, currentUserId);
@@ -531,7 +1039,6 @@ async function renderTabContent() {
       </div>
     ` : '';
 
-    // Mentor/admin add feedback on a specific update from Updates tab
     const mentorFeedbackOnUpdate = (currentRole === 'faculty_mentor' || currentRole === 'project_admin') && updatesForSelect.length ? `
       <div class="form-panel">
         <h3><span class="icon">💬</span> Add Feedback on an Update</h3>
@@ -572,9 +1079,7 @@ async function renderTabContent() {
         btn.disabled = true;
         try {
           await api('POST', `/projects/${currentProjectId}/feedback`, {
-            mentorId: currentUserId,
-            feedbackText,
-            updateId: updateId || undefined,
+            mentorId: currentUserId, feedbackText, updateId: updateId || undefined,
           });
           toast('Feedback submitted!');
           form.reset();
@@ -586,7 +1091,6 @@ async function renderTabContent() {
     renderUpdatesTab();
 
   } else {
-    // ── Feedback tab ─────────────────────────────────────────────────────
     const addFeedbackForm = (currentRole === 'faculty_mentor' || currentRole === 'project_admin') ? `
       <div class="form-panel">
         <h3><span class="icon">✍️</span> Add General Project Feedback</h3>
@@ -612,7 +1116,6 @@ async function renderTabContent() {
       <div id="feedback-list"></div>
     `;
 
-    // Populate update dropdown in feedback form
     if (addFeedbackForm) {
       const sel = document.getElementById('fb-update-select') as HTMLSelectElement;
       try {
@@ -620,7 +1123,6 @@ async function renderTabContent() {
         sel.innerHTML = '<option value="">— General project feedback —</option>' +
           updates.map(u => `<option value="${u._id}">${u.title}</option>`).join('');
       } catch { /* ignore */ }
-
       document.getElementById('form-add-feedback')?.addEventListener('submit', handleAddFeedback);
     }
 

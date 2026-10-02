@@ -522,3 +522,97 @@ textarea { resize: vertical; min-height: 80px; }
   main { padding: 20px 14px 48px; }
   .config-bar { flex-direction: column; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Task 2G — Events Styles
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.event-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+  transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 16px;
+  align-items: start;
+}
+.event-card:hover {
+  border-color: rgba(139,92,246,0.3);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+.event-date-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-glow);
+  border: 1px solid rgba(139,92,246,0.25);
+  border-radius: 10px;
+  padding: 10px 14px;
+  min-width: 58px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.event-date-badge .ev-month { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); }
+.event-date-badge .ev-day   { font-size: 24px; font-weight: 700; color: var(--text); line-height: 1.1; }
+.event-date-badge .ev-year  { font-size: 10px; color: var(--text-faint); }
+
+.event-card.past { opacity: 0.6; }
+.event-card.past .event-date-badge { background: rgba(100,116,139,0.1); border-color: rgba(100,116,139,0.2); }
+.event-card.past .ev-month,
+.event-card.past .ev-day { color: var(--text-faint); }
+
+.event-body { flex: 1; min-width: 0; }
+.event-title { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 4px; line-height: 1.4; }
+.event-meta  { font-size: 12px; color: var(--text-faint); display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+.event-meta span { display: flex; align-items: center; gap: 4px; }
+.event-desc  { font-size: 13.5px; color: var(--text-muted); line-height: 1.6; }
+
+.event-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+
+.club-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  background: var(--teal-glow); color: var(--teal); border: 1px solid rgba(20,184,166,0.25);
+}
+
+.main-nav {
+  display: flex; gap: 4px; margin-bottom: 28px; border-bottom: 1px solid var(--border);
+}
+.main-nav-btn {
+  padding: 10px 18px; background: transparent; border: none; border-bottom: 2px solid transparent;
+  color: var(--text-faint); font-family: var(--font); font-size: 13.5px; font-weight: 500;
+  cursor: pointer; transition: all var(--transition); margin-bottom: -1px;
+}
+.main-nav-btn:hover { color: var(--text); }
+.main-nav-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+input[type="datetime-local"] {
+  width: 100%; background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 9px 12px; color: var(--text);
+  font-family: var(--font); font-size: 14px; outline: none; color-scheme: dark;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+input[type="datetime-local"]:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+.past-label {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
+  border-radius: 20px; font-size: 10px; font-weight: 600;
+  background: rgba(100,116,139,0.12); color: var(--text-faint);
+  border: 1px solid rgba(100,116,139,0.2); text-transform: uppercase; letter-spacing: 0.5px;
+}
+.upcoming-label {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
+  border-radius: 20px; font-size: 10px; font-weight: 600;
+  background: var(--success-soft); color: var(--success);
+  border: 1px solid rgba(34,197,94,0.2); text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+@media (max-width: 600px) {
+  .event-card { grid-template-columns: auto 1fr; grid-template-rows: auto auto; }
+  .event-actions { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; }
+}
