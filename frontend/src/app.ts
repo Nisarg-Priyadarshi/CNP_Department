@@ -1,6 +1,8 @@
 /**
  * Task 2F — Project Updates & Mentor Feedback Frontend
  * Task 2G — Club Events Management Frontend
+ * Task 2H — Project Materials, Inventory & Material Requests Frontend
+ * Task 2I — Notifications System Frontend
  *
  * Single-page application (vanilla TS + Vite).
  * Communicates with backend at http://localhost:5000.
@@ -16,6 +18,12 @@
  *   - club_admin          → create/edit/delete events for any club
  *   - faculty_mentor      → view events (read-only)
  *   - project_admin       → view events (read-only)
+ *
+ * Roles supported for 2H:
+ *   - student (team_leader) → add materials, send requests, view team/materials/requests
+ *   - student (member)      → view team, materials, requests (read-only)
+ *   - faculty_mentor        → view assigned project team, materials, requests (read-only)
+ *   - project_admin         → full inventory management, approve/reject requests, assign leader
  */
 
 import './app.css';
@@ -51,6 +59,74 @@ interface ClubEvent {
   updatedAt: string;
 }
 
+// ── Task 2H types ─────────────────────────────────────────────────────────────
+interface GuitarInventoryItem {
+  _id: string;
+  name: string;
+  description: string;
+  category: string;
+  totalQuantity: number;
+  availableQuantity: number;
+  location: string;
+  createdBy: { _id: string; name: string; role: string } | string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ProjectMaterial {
+  _id: string;
+  projectId: string | { _id: string; name: string };
+  name: string;
+  quantity: number;
+  source: 'self_purchased' | 'owned' | 'guitar';
+  inventoryItemId: null | { _id: string; name: string; category: string };
+  materialRequestId: null | string;
+  addedBy: { _id: string; name: string; role: string } | string;
+  createdAt: string;
+}
+
+interface MaterialRequest {
+  _id: string;
+  projectId: { _id: string; name: string } | string;
+  requestedBy: { _id: string; name: string; role: string } | string;
+  inventoryItemId: { _id: string; name: string; category: string; availableQuantity: number } | string;
+  quantity: number;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  rejectionReason: string | null;
+  reviewedBy: { _id: string; name: string } | null;
+  reviewedAt: string | null;
+  createdAt: string;
+}
+
+interface TeamMember {
+  membershipId: string;
+  student: { _id: string; name: string; email: string; role: string };
+  position: 'Team Leader' | 'Team Member';
+  joinedAt: string;
+}
+
+interface InventoryAllocation {
+  _id: string;
+  inventoryItemId: { _id: string; name: string; category: string; totalQuantity: number; availableQuantity: number } | string;
+  projectId: { _id: string; name: string } | string;
+  quantity: number;
+  allocatedBy: { _id: string; name: string } | string;
+  allocatedAt: string;
+}
+
+// ── Task 2I: Notification type ────────────────────────────────────────────────
+interface AppNotification {
+  _id: string;
+  userId: string;
+  type: string;
+  title: string;
+  message: string;
+  relatedId: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════════════════════════════════════════
@@ -66,7 +142,17 @@ let activeTab        = 'updates';
 let allClubs: Club[]         = [];
 let currentClubId            = '';
 let eventsMainSection        = 'upcoming'; // 'upcoming' | 'manage' | 'club'
-let mainSection              = 'projects'; // 'projects' | 'events'
+let mainSection              = 'projects'; // 'projects' | 'events' | 'materials'
+
+// 2H state
+let allInventoryItems: GuitarInventoryItem[] = [];
+let h2MaterialsSubTab = 'team'; // 'team' | 'materials' | 'requests' | 'inventory' | 'allRequests' | 'allocations'
+
+// 2I state
+let notifPanelOpen     = false;
+let notifUnreadCount   = 0;
+let notifList: AppNotification[] = [];
+let notifPollInterval: number | undefined;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -712,8 +798,28 @@ function renderApp() {
         <div class="dot"></div>
         CNP Department
       </div>
-      <span class="header-badge">Tasks 2F &amp; 2G</span>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span class="header-badge">Tasks 2F–2I</span>
+        <button class="notif-bell" id="notif-bell" title="Notifications">
+          🔔
+          <span class="notif-badge" id="notif-badge" style="display:none">0</span>
+        </button>
+      </div>
     </header>
+
+    <!-- Notification Panel -->
+    <div class="notif-panel" id="notif-panel" style="display:none">
+      <div class="notif-panel-header">
+        <span>🔔 Notifications</span>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" id="notif-mark-all">Mark all read</button>
+          <button class="btn btn-ghost btn-sm" id="notif-close">✕</button>
+        </div>
+      </div>
+      <div class="notif-list" id="notif-list">
+        <div class="empty-state"><p>Loading…</p></div>
+      </div>
+    </div>
 
     <main>
       <!-- ─── User Config ─── -->
@@ -739,6 +845,7 @@ function renderApp() {
       <nav class="main-nav">
         <button class="main-nav-btn ${mainSection === 'events' ? 'active' : ''}" id="nav-events">🗓 Events (2G)</button>
         <button class="main-nav-btn ${mainSection === 'projects' ? 'active' : ''}" id="nav-projects">📋 Project Updates (2F)</button>
+        <button class="main-nav-btn ${mainSection === 'materials' ? 'active' : ''}" id="nav-materials">🔧 Materials &amp; Inventory (2H)</button>
       </nav>
 
       <!-- ─── Content area ─── -->
@@ -757,6 +864,7 @@ function renderApp() {
     mainSection = 'events';
     document.getElementById('nav-events')!.classList.add('active');
     document.getElementById('nav-projects')!.classList.remove('active');
+    document.getElementById('nav-materials')!.classList.remove('active');
     renderEventsSection();
   });
 
@@ -764,14 +872,45 @@ function renderApp() {
     mainSection = 'projects';
     document.getElementById('nav-projects')!.classList.add('active');
     document.getElementById('nav-events')!.classList.remove('active');
+    document.getElementById('nav-materials')!.classList.remove('active');
     renderProjectsSection();
+  });
+
+  document.getElementById('nav-materials')!.addEventListener('click', () => {
+    mainSection = 'materials';
+    document.getElementById('nav-materials')!.classList.add('active');
+    document.getElementById('nav-events')!.classList.remove('active');
+    document.getElementById('nav-projects')!.classList.remove('active');
+    renderMaterialsSection();
+  });
+
+  // ── 2I: Notification bell ─────────────────────────────────────────────────
+  document.getElementById('notif-bell')!.addEventListener('click', () => {
+    notifPanelOpen = !notifPanelOpen;
+    const panel = document.getElementById('notif-panel')!;
+    panel.style.display = notifPanelOpen ? 'flex' : 'none';
+    if (notifPanelOpen && currentUserId) loadNotifications();
+  });
+  document.getElementById('notif-close')!.addEventListener('click', () => {
+    notifPanelOpen = false;
+    document.getElementById('notif-panel')!.style.display = 'none';
+  });
+  document.getElementById('notif-mark-all')!.addEventListener('click', async () => {
+    if (!currentUserId) return;
+    try {
+      await api('PATCH', '/notifications/read-all', { userId: currentUserId });
+      await loadNotifications();
+    } catch (e: unknown) { toast((e as Error).message, 'error'); }
   });
 
   // Load clubs for events
   fetchClubs().then(c => { allClubs = c; }).catch(() => {});
+  // Load inventory for 2H
+  fetchInventory().then(items => { allInventoryItems = items; }).catch(() => {});
 
   // Render default section
   if (mainSection === 'events') renderEventsSection();
+  else if (mainSection === 'materials') renderMaterialsSection();
   else renderProjectsSection();
 }
 
@@ -1135,3 +1274,872 @@ async function renderTabContent() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 renderApp();
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── TASK 2H: FETCH HELPERS ────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function fetchInventory(): Promise<GuitarInventoryItem[]> {
+  const data = await api<{ data: GuitarInventoryItem[] }>('GET', '/inventory');
+  return data.data;
+}
+
+async function fetchProjectTeam(projectId: string): Promise<{ data: TeamMember[]; project: { id: string; name: string; teamLeader: unknown } }> {
+  return api('GET', `/projects/${projectId}/team`);
+}
+
+async function fetchProjectMaterials(projectId: string, userId: string): Promise<{ data: ProjectMaterial[] }> {
+  return api('GET', `/projects/${projectId}/materials?userId=${userId}`);
+}
+
+async function fetchProjectRequests(projectId: string, userId: string): Promise<{ data: MaterialRequest[] }> {
+  return api('GET', `/material-requests/project/${projectId}?userId=${userId}`);
+}
+
+async function fetchAllRequests(adminId: string): Promise<{ data: MaterialRequest[] }> {
+  return api('GET', `/material-requests?adminId=${adminId}`);
+}
+
+async function fetchAllAllocations(adminId: string): Promise<{ data: InventoryAllocation[] }> {
+  return api('GET', `/allocations?adminId=${adminId}`);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── TASK 2H: MAIN SECTION ─────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+function renderMaterialsSection() {
+  const area = document.getElementById('content-area')!;
+  const isAdmin = currentRole === 'project_admin';
+  const isStudent = currentRole === 'student';
+  const isMentor = currentRole === 'faculty_mentor';
+
+  // Determine available tabs based on role
+  const tabs: { id: string; label: string }[] = [];
+  if (isStudent || isMentor || isAdmin) {
+    if (!isAdmin) {
+      tabs.push({ id: 'team',     label: '👥 Project Team' });
+      tabs.push({ id: 'materials', label: '📦 Materials' });
+      tabs.push({ id: 'requests', label: '📋 Requests' });
+    }
+  }
+  if (isAdmin) {
+    tabs.push({ id: 'team',        label: '👥 Project Team' });
+    tabs.push({ id: 'materials',   label: '📦 Project Materials' });
+    tabs.push({ id: 'requests',    label: '📋 Project Requests' });
+    tabs.push({ id: 'inventory',   label: '🏭 Inventory' });
+    tabs.push({ id: 'allRequests', label: '📨 All Requests' });
+    tabs.push({ id: 'allocations', label: '📊 Allocations' });
+  }
+
+  // Ensure h2MaterialsSubTab is valid for this role
+  if (!tabs.find(t => t.id === h2MaterialsSubTab)) {
+    h2MaterialsSubTab = tabs[0]?.id || 'team';
+  }
+
+  const projectScopedTabs = ['team', 'materials', 'requests'];
+  const needsProject = projectScopedTabs.includes(h2MaterialsSubTab);
+
+  area.innerHTML = `
+    <h2 class="section-title">🔧 Materials & Inventory</h2>
+    <p class="section-sub">Project materials, Guitar inventory, and material requests.</p>
+
+    <!-- Tab bar -->
+    <div class="tab-bar" style="margin-bottom:20px">
+      ${tabs.map(t => `<button class="tab-btn ${h2MaterialsSubTab === t.id ? 'active' : ''}" id="h2-tab-${t.id}">${t.label}</button>`).join('')}
+    </div>
+
+    <!-- Project selector (for project-scoped tabs) -->
+    ${needsProject ? `
+    <div class="config-bar" style="margin-bottom:20px" id="h2-project-bar">
+      <div class="form-row">
+        <label for="h2-project-select">Project</label>
+        <select id="h2-project-select">
+          <option value="">— loading projects —</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" id="h2-btn-load" style="flex-shrink:0">Load</button>
+    </div>` : ''}
+
+    <div id="h2-content"></div>
+  `;
+
+  // Attach tab listeners
+  tabs.forEach(t => {
+    document.getElementById(`h2-tab-${t.id}`)?.addEventListener('click', () => {
+      h2MaterialsSubTab = t.id;
+      renderMaterialsSection();
+    });
+  });
+
+  // Load project selector
+  if (needsProject) {
+    _loadH2ProjectSelector();
+    document.getElementById('h2-btn-load')?.addEventListener('click', _onH2Load);
+  }
+
+  // For non-project tabs, render immediately
+  if (!needsProject) {
+    _renderH2SubTab();
+  }
+}
+
+async function _loadH2ProjectSelector() {
+  const sel = document.getElementById('h2-project-select') as HTMLSelectElement | null;
+  if (!sel) return;
+  try {
+    let projects: Project[] = [];
+    if (currentRole === 'student') {
+      const data = await api<{ data: { project: Project }[] }>('GET', `/users/${currentUserId}/projects`);
+      projects = data.data.map(d => d.project);
+    } else if (currentRole === 'faculty_mentor') {
+      const data = await api<{ data: { project: Project }[] }>('GET', `/mentors/${currentUserId}/projects`);
+      projects = data.data.map(d => d.project);
+    } else {
+      const data = await api<{ data: Project[] }>('GET', '/projects');
+      projects = data.data;
+    }
+    allProjects = projects;
+    sel.innerHTML = '<option value="">— Choose a project —</option>' +
+      projects.map(p => `<option value="${p._id}" ${p._id === currentProjectId ? 'selected' : ''}>${p.name}</option>`).join('');
+    if (currentProjectId) {
+      sel.value = currentProjectId;
+      _renderH2SubTab();
+    }
+  } catch (e: unknown) {
+    sel.innerHTML = '<option value="">Failed to load projects</option>';
+  }
+}
+
+async function _onH2Load() {
+  const sel = document.getElementById('h2-project-select') as HTMLSelectElement | null;
+  if (!sel) return;
+  currentProjectId = sel.value;
+  if (!currentProjectId) { toast('Please select a project', 'error'); return; }
+  if (!currentUserId) { toast('Please enter your User ID first', 'error'); return; }
+  _renderH2SubTab();
+}
+
+async function _renderH2SubTab() {
+  const container = document.getElementById('h2-content');
+  if (!container) return;
+
+  if (!currentUserId && h2MaterialsSubTab !== 'inventory') {
+    container.innerHTML = '<div class="empty-state"><div class="emoji">👤</div><p>Please enter your User ID and click Apply Role first.</p></div>';
+    return;
+  }
+
+  container.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+
+  try {
+    switch (h2MaterialsSubTab) {
+      case 'team':       await renderH2Team(container); break;
+      case 'materials':  await renderH2Materials(container); break;
+      case 'requests':   await renderH2Requests(container); break;
+      case 'inventory':  await renderH2Inventory(container); break;
+      case 'allRequests': await renderH2AllRequests(container); break;
+      case 'allocations': await renderH2Allocations(container); break;
+    }
+  } catch (e: unknown) {
+    container.innerHTML = `<div class="empty-state"><div class="emoji">⚠️</div><p>${(e as Error).message}</p></div>`;
+  }
+}
+
+// ── TEAM TAB ──────────────────────────────────────────────────────────────────
+
+async function renderH2Team(container: HTMLElement) {
+  if (!currentProjectId) {
+    container.innerHTML = '<div class="empty-state"><div class="emoji">👥</div><p>Select a project to view its team.</p></div>';
+    return;
+  }
+
+  const result = await fetchProjectTeam(currentProjectId);
+  const team: TeamMember[] = result.data;
+  const project = result.project;
+  const isAdmin = currentRole === 'project_admin';
+
+  let adminControls = '';
+  if (isAdmin) {
+    const members = team.map(m => m.student);
+    adminControls = `
+      <div class="form-panel" style="margin-bottom:20px">
+        <h3><span class="icon">👑</span> Assign / Change Team Leader</h3>
+        <div class="form-row">
+          <label for="h2-leader-select">Select Team Leader</label>
+          <select id="h2-leader-select">
+            <option value="">— Select a member —</option>
+            ${members.map(m => `<option value="${m._id}" ${project.teamLeader && typeof project.teamLeader === 'object' && (project.teamLeader as { _id: string })._id === m._id ? 'selected' : ''}>${m.name} (${m.email})</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-primary" id="h2-btn-assign-leader">👑 Assign as Team Leader</button>
+      </div>`;
+  }
+
+  container.innerHTML = `
+    ${adminControls}
+    <div class="section-label">Project Team — ${team.length} Member${team.length !== 1 ? 's' : ''}</div>
+    <div class="team-table-wrap">
+      <table class="team-table">
+        <thead>
+          <tr><th>Student Name</th><th>Email</th><th>Position</th><th>Joined</th></tr>
+        </thead>
+        <tbody>
+          ${team.length === 0 ? '<tr><td colspan="4" style="text-align:center;color:var(--text-faint);padding:20px">No members yet.</td></tr>' :
+            team.map(m => `
+              <tr>
+                <td><strong>${m.student.name}</strong></td>
+                <td style="color:var(--text-faint);font-size:12px">${m.student.email}</td>
+                <td>${m.position === 'Team Leader'
+                  ? '<span class="badge badge-leader">👑 Team Leader</span>'
+                  : '<span class="badge badge-member">Team Member</span>'}</td>
+                <td style="font-size:12px;color:var(--text-faint)">${formatDate(m.joinedAt)}</td>
+              </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  if (isAdmin) {
+    document.getElementById('h2-btn-assign-leader')?.addEventListener('click', async () => {
+      const studentId = (document.getElementById('h2-leader-select') as HTMLSelectElement).value;
+      if (!studentId) { toast('Select a member first', 'error'); return; }
+      const btn = document.getElementById('h2-btn-assign-leader') as HTMLButtonElement;
+      btn.disabled = true;
+      try {
+        await api('PATCH', `/projects/${currentProjectId}/team-leader`, {
+          adminId: currentUserId,
+          studentId,
+        });
+        toast('Team Leader assigned successfully!');
+        renderH2Team(container);
+      } catch (e: unknown) {
+        toast((e as Error).message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+}
+
+// ── MATERIALS TAB ─────────────────────────────────────────────────────────────
+
+async function renderH2Materials(container: HTMLElement) {
+  if (!currentProjectId) {
+    container.innerHTML = '<div class="empty-state"><div class="emoji">📦</div><p>Select a project to view its materials.</p></div>';
+    return;
+  }
+
+  const result = await fetchProjectMaterials(currentProjectId, currentUserId);
+  const materials: ProjectMaterial[] = result.data;
+
+  // Check if current user is Team Leader of this project
+  let isTeamLeader = false;
+  if (currentRole === 'student') {
+    try {
+      const teamResult = await fetchProjectTeam(currentProjectId);
+      const me = teamResult.data.find(m => m.student._id === currentUserId);
+      isTeamLeader = me?.position === 'Team Leader';
+    } catch { /* ignore */ }
+  }
+
+  const sourceLabel = (s: string) => {
+    if (s === 'self_purchased') return '<span class="badge badge-self">Self Purchased</span>';
+    if (s === 'owned') return '<span class="badge badge-owned">Owned</span>';
+    if (s === 'guitar') return '<span class="badge badge-guitar">✅ Guitar (Approved)</span>';
+    return s;
+  };
+
+  const addForm = isTeamLeader ? `
+    <div class="form-panel" style="margin-bottom:20px">
+      <h3><span class="icon">➕</span> Add Material</h3>
+      <form id="h2-form-add-material">
+        <div class="form-row">
+          <label for="h2-mat-name">Material Name *</label>
+          <input type="text" id="h2-mat-name" placeholder="e.g. Wire_1" required />
+        </div>
+        <div class="form-row">
+          <label for="h2-mat-qty">Quantity *</label>
+          <input type="number" id="h2-mat-qty" min="1" placeholder="e.g. 10" required />
+        </div>
+        <div class="form-row">
+          <label for="h2-mat-source">Source *</label>
+          <select id="h2-mat-source">
+            <option value="self_purchased">Self Purchased</option>
+            <option value="owned">Already Owned</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary">➕ Add Material</button>
+      </form>
+    </div>` : '';
+
+  container.innerHTML = `
+    ${addForm}
+    <div class="section-label">Project Materials — ${materials.length} entr${materials.length !== 1 ? 'ies' : 'y'}</div>
+    ${materials.length === 0 ? '<div class="empty-state"><div class="emoji">📦</div><p>No materials recorded yet.</p></div>' : `
+    <table class="team-table">
+      <thead>
+        <tr><th>Material Name</th><th>Quantity</th><th>Source</th><th>Added By</th><th>Date</th></tr>
+      </thead>
+      <tbody>
+        ${materials.map(m => `
+          <tr>
+            <td><strong>${m.name}</strong></td>
+            <td><span class="qty-badge">${m.quantity}</span></td>
+            <td>${sourceLabel(m.source)}</td>
+            <td style="font-size:12px;color:var(--text-faint)">${typeof m.addedBy === 'object' ? m.addedBy.name : '—'}</td>
+            <td style="font-size:12px;color:var(--text-faint)">${formatDate(m.createdAt)}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`}
+  `;
+
+  if (isTeamLeader) {
+    document.getElementById('h2-form-add-material')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name   = (document.getElementById('h2-mat-name') as HTMLInputElement).value.trim();
+      const qty    = Number((document.getElementById('h2-mat-qty') as HTMLInputElement).value);
+      const source = (document.getElementById('h2-mat-source') as HTMLSelectElement).value;
+      if (!name || !qty) { toast('Name and quantity are required', 'error'); return; }
+      const btn = (e.target as HTMLFormElement).querySelector('button[type="submit"]') as HTMLButtonElement;
+      btn.disabled = true;
+      try {
+        await api('POST', `/projects/${currentProjectId}/materials`, {
+          leaderId: currentUserId,
+          name, quantity: qty, source,
+        });
+        toast('Material added!');
+        (e.target as HTMLFormElement).reset();
+        renderH2Materials(container);
+      } catch (err: unknown) {
+        toast((err as Error).message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+}
+
+// ── REQUESTS TAB (project-scoped) ─────────────────────────────────────────────
+
+async function renderH2Requests(container: HTMLElement) {
+  if (!currentProjectId) {
+    container.innerHTML = '<div class="empty-state"><div class="emoji">📋</div><p>Select a project to view its requests.</p></div>';
+    return;
+  }
+
+  const result = await fetchProjectRequests(currentProjectId, currentUserId);
+  const requests: MaterialRequest[] = result.data;
+
+  // Check if current user is Team Leader
+  let isTeamLeader = false;
+  if (currentRole === 'student') {
+    try {
+      const teamResult = await fetchProjectTeam(currentProjectId);
+      const me = teamResult.data.find(m => m.student._id === currentUserId);
+      isTeamLeader = me?.position === 'Team Leader';
+    } catch { /* ignore */ }
+  }
+
+  const statusBadge = (s: string) => {
+    if (s === 'pending')  return '<span class="badge badge-pending">⏳ Pending</span>';
+    if (s === 'approved') return '<span class="badge badge-approved">✅ Approved</span>';
+    if (s === 'rejected') return '<span class="badge badge-rejected">❌ Rejected</span>';
+    return s;
+  };
+
+  const requestForm = isTeamLeader ? `
+    <div class="form-panel" style="margin-bottom:20px">
+      <h3><span class="icon">📨</span> Request Material from Guitar</h3>
+      <form id="h2-form-request-material">
+        <div class="form-row">
+          <label for="h2-req-item">Select Inventory Item *</label>
+          <select id="h2-req-item">
+            <option value="">— Choose an item —</option>
+            ${allInventoryItems.map(i => `<option value="${i._id}">${i.name} (Available: ${i.availableQuantity})</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="h2-req-qty">Quantity *</label>
+          <input type="number" id="h2-req-qty" min="1" placeholder="e.g. 1" required />
+        </div>
+        <div class="form-row">
+          <label for="h2-req-reason">Reason (optional)</label>
+          <textarea id="h2-req-reason" rows="2" placeholder="Why do you need this material?"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">📨 Send Request</button>
+      </form>
+    </div>` : '';
+
+  container.innerHTML = `
+    ${requestForm}
+    <div class="section-label">Material Requests — ${requests.length} total</div>
+    ${requests.length === 0 ? '<div class="empty-state"><div class="emoji">📋</div><p>No material requests yet.</p></div>' : `
+    <div class="requests-list">
+      ${requests.map(r => {
+        const invItem = typeof r.inventoryItemId === 'object' ? r.inventoryItemId : null;
+        const proj = typeof r.projectId === 'object' ? r.projectId : null;
+        return `
+          <div class="card request-card request-${r.status}">
+            <div class="card-header">
+              <div>
+                <div class="card-title">${invItem ? invItem.name : '—'}</div>
+                <div class="card-meta">
+                  <span>📦 Qty: <strong>${r.quantity}</strong></span>
+                  ${proj ? `<span>📂 ${proj.name}</span>` : ''}
+                  <span>📅 ${formatDate(r.createdAt)}</span>
+                </div>
+              </div>
+              ${statusBadge(r.status)}
+            </div>
+            ${r.reason ? `<div class="card-body" style="margin-top:6px;font-size:12.5px;color:var(--text-faint)">💬 ${r.reason}</div>` : ''}
+            ${r.status === 'rejected' && r.rejectionReason ? `
+              <div style="margin-top:8px;padding:10px;background:var(--danger-soft);border-radius:8px;font-size:13px;color:var(--danger)">
+                ❌ Rejection reason: ${r.rejectionReason}
+              </div>` : ''}
+            ${r.status === 'approved' ? `
+              <div style="margin-top:8px;padding:10px;background:var(--success-soft);border-radius:8px;font-size:13px;color:var(--success)">
+                ✅ Approved on ${r.reviewedAt ? formatDate(r.reviewedAt) : '—'}
+              </div>` : ''}
+          </div>`;
+      }).join('')}
+    </div>`}
+  `;
+
+  if (isTeamLeader) {
+    document.getElementById('h2-form-request-material')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const inventoryItemId = (document.getElementById('h2-req-item') as HTMLSelectElement).value;
+      const quantity = Number((document.getElementById('h2-req-qty') as HTMLInputElement).value);
+      const reason   = (document.getElementById('h2-req-reason') as HTMLTextAreaElement).value.trim();
+      if (!inventoryItemId) { toast('Select an inventory item', 'error'); return; }
+      if (!quantity || quantity < 1) { toast('Enter a valid quantity', 'error'); return; }
+      const btn = (e.target as HTMLFormElement).querySelector('button[type="submit"]') as HTMLButtonElement;
+      btn.disabled = true;
+      try {
+        await api('POST', '/material-requests', {
+          requestedBy: currentUserId,
+          projectId: currentProjectId,
+          inventoryItemId,
+          quantity,
+          reason,
+        });
+        toast('Material request sent!');
+        (e.target as HTMLFormElement).reset();
+        renderH2Requests(container);
+      } catch (err: unknown) {
+        toast((err as Error).message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+}
+
+// ── INVENTORY TAB (admin only) ────────────────────────────────────────────────
+
+async function renderH2Inventory(container: HTMLElement) {
+  if (currentRole !== 'project_admin') {
+    container.innerHTML = '<div class="empty-state"><div class="emoji">🔒</div><p>Inventory management is restricted to Project Admin.</p></div>';
+    return;
+  }
+
+  const items = await fetchInventory();
+  allInventoryItems = items;
+
+  container.innerHTML = `
+    <div class="form-panel" style="margin-bottom:20px">
+      <h3><span class="icon">➕</span> Add Inventory Item</h3>
+      <form id="h2-form-add-inv">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-row">
+            <label for="h2-inv-name">Name *</label>
+            <input type="text" id="h2-inv-name" placeholder="e.g. Arduino Uno" required />
+          </div>
+          <div class="form-row">
+            <label for="h2-inv-category">Category</label>
+            <input type="text" id="h2-inv-category" placeholder="e.g. Microcontroller" />
+          </div>
+          <div class="form-row">
+            <label for="h2-inv-total">Total Qty *</label>
+            <input type="number" id="h2-inv-total" min="0" placeholder="10" required />
+          </div>
+          <div class="form-row">
+            <label for="h2-inv-avail">Available Qty</label>
+            <input type="number" id="h2-inv-avail" min="0" placeholder="Same as total" />
+          </div>
+          <div class="form-row">
+            <label for="h2-inv-location">Location</label>
+            <input type="text" id="h2-inv-location" placeholder="e.g. Lab Room 3" />
+          </div>
+          <div class="form-row">
+            <label for="h2-inv-desc">Description</label>
+            <input type="text" id="h2-inv-desc" placeholder="Short description" />
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary" style="margin-top:8px">➕ Add Item</button>
+      </form>
+    </div>
+
+    <div class="section-label">Guitar Inventory — ${items.length} item${items.length !== 1 ? 's' : ''}</div>
+    ${items.length === 0 ? '<div class="empty-state"><div class="emoji">🏭</div><p>No inventory items yet.</p></div>' : `
+    <div id="inv-items-list">
+      ${items.map(item => renderInventoryCard(item)).join('')}
+    </div>`}
+  `;
+
+  // Add item form
+  document.getElementById('h2-form-add-inv')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name     = (document.getElementById('h2-inv-name') as HTMLInputElement).value.trim();
+    const category = (document.getElementById('h2-inv-category') as HTMLInputElement).value.trim();
+    const total    = Number((document.getElementById('h2-inv-total') as HTMLInputElement).value);
+    const availEl  = (document.getElementById('h2-inv-avail') as HTMLInputElement).value;
+    const avail    = availEl ? Number(availEl) : total;
+    const location = (document.getElementById('h2-inv-location') as HTMLInputElement).value.trim();
+    const desc     = (document.getElementById('h2-inv-desc') as HTMLInputElement).value.trim();
+    if (!name || isNaN(total)) { toast('Name and total quantity are required', 'error'); return; }
+    const btn = (e.target as HTMLFormElement).querySelector('button[type="submit"]') as HTMLButtonElement;
+    btn.disabled = true;
+    try {
+      await api('POST', '/inventory', {
+        adminId: currentUserId,
+        name, category, totalQuantity: total,
+        availableQuantity: avail, location, description: desc,
+      });
+      toast('Inventory item added!');
+      (e.target as HTMLFormElement).reset();
+      renderH2Inventory(container);
+    } catch (err: unknown) {
+      toast((err as Error).message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // Attach listeners for each item card
+  document.querySelectorAll('[data-inv-increase]').forEach(btn => {
+    btn.addEventListener('click', () => handleInventoryQty(btn.getAttribute('data-inv-increase')!, 'increase', container));
+  });
+  document.querySelectorAll('[data-inv-decrease]').forEach(btn => {
+    btn.addEventListener('click', () => handleInventoryQty(btn.getAttribute('data-inv-decrease')!, 'decrease', container));
+  });
+  document.querySelectorAll('[data-inv-delete]').forEach(btn => {
+    btn.addEventListener('click', () => handleInventoryDelete(btn.getAttribute('data-inv-delete')!, container));
+  });
+}
+
+function renderInventoryCard(item: GuitarInventoryItem): string {
+  const allocated = item.totalQuantity - item.availableQuantity;
+  return `
+    <div class="card inv-card" data-item-id="${item._id}">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${item.name}</div>
+          <div class="card-meta">
+            ${item.category ? `<span>🏷 ${item.category}</span>` : ''}
+            ${item.location ? `<span>📍 ${item.location}</span>` : ''}
+            <span>📅 ${formatDate(item.createdAt)}</span>
+          </div>
+          ${item.description ? `<div style="font-size:12.5px;color:var(--text-faint);margin-top:4px">${item.description}</div>` : ''}
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div class="inv-qty-block">
+            <div class="inv-qty-row"><span class="qty-label">Total</span><span class="qty-val">${item.totalQuantity}</span></div>
+            <div class="inv-qty-row"><span class="qty-label">Available</span><span class="qty-val avail">${item.availableQuantity}</span></div>
+            <div class="inv-qty-row"><span class="qty-label">Allocated</span><span class="qty-val alloc">${allocated}</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card-actions" style="flex-wrap:wrap;gap:6px">
+        <button class="btn btn-ghost btn-sm" data-inv-increase="${item._id}">📈 Increase</button>
+        <button class="btn btn-ghost btn-sm" data-inv-decrease="${item._id}">📉 Decrease</button>
+        <button class="btn btn-danger btn-sm" data-inv-delete="${item._id}">🗑 Delete</button>
+      </div>
+    </div>`;
+}
+
+async function handleInventoryQty(itemId: string, action: 'increase' | 'decrease', container: HTMLElement) {
+  const amountStr = prompt(`Enter amount to ${action}:`);
+  if (amountStr === null) return;
+  const amount = Number(amountStr);
+  if (isNaN(amount) || amount <= 0) { toast('Enter a valid positive number', 'error'); return; }
+  try {
+    await api('PATCH', `/inventory/${itemId}/quantity`, {
+      adminId: currentUserId, action, amount,
+    });
+    toast(`Quantity ${action}d by ${amount}`);
+    allInventoryItems = await fetchInventory();
+    renderH2Inventory(container);
+  } catch (e: unknown) {
+    toast((e as Error).message, 'error');
+  }
+}
+
+async function handleInventoryDelete(itemId: string, container: HTMLElement) {
+  const item = allInventoryItems.find(i => i._id === itemId);
+  if (!confirm(`Delete "${item?.name || 'this item'}" from inventory? This cannot be undone.`)) return;
+  try {
+    await api('DELETE', `/inventory/${itemId}`, { adminId: currentUserId });
+    toast('Item deleted.');
+    allInventoryItems = await fetchInventory();
+    renderH2Inventory(container);
+  } catch (e: unknown) {
+    toast((e as Error).message, 'error');
+  }
+}
+
+// ── ALL REQUESTS TAB (admin) ──────────────────────────────────────────────────
+
+async function renderH2AllRequests(container: HTMLElement) {
+  if (currentRole !== 'project_admin') {
+    container.innerHTML = '<div class="empty-state"><div class="emoji">🔒</div><p>Access restricted to Project Admin.</p></div>';
+    return;
+  }
+
+  if (!currentUserId) {
+    container.innerHTML = '<div class="empty-state"><div class="emoji">👤</div><p>Please enter your User ID first.</p></div>';
+    return;
+  }
+
+  const result = await fetchAllRequests(currentUserId);
+  const requests: MaterialRequest[] = result.data;
+
+  const statusBadge = (s: string) => {
+    if (s === 'pending')  return '<span class="badge badge-pending">⏳ Pending</span>';
+    if (s === 'approved') return '<span class="badge badge-approved">✅ Approved</span>';
+    if (s === 'rejected') return '<span class="badge badge-rejected">❌ Rejected</span>';
+    return s;
+  };
+
+  container.innerHTML = `
+    <div class="section-label">All Material Requests — ${requests.length} total</div>
+    ${requests.length === 0 ? '<div class="empty-state"><div class="emoji">📋</div><p>No material requests found.</p></div>' : `
+    <div>
+      ${requests.map(r => {
+        const invItem = typeof r.inventoryItemId === 'object' ? r.inventoryItemId : null;
+        const proj    = typeof r.projectId === 'object' ? r.projectId : null;
+        const leader  = typeof r.requestedBy === 'object' ? r.requestedBy : null;
+        return `
+          <div class="card request-card request-${r.status}" id="req-card-${r._id}">
+            <div class="card-header">
+              <div>
+                <div class="card-title">${invItem ? invItem.name : '—'}</div>
+                <div class="card-meta">
+                  <span>📦 Qty: <strong>${r.quantity}</strong></span>
+                  ${proj ? `<span>📂 <strong>${proj.name}</strong></span>` : ''}
+                  ${leader ? `<span>👤 ${leader.name}</span>` : ''}
+                  <span>📅 ${formatDate(r.createdAt)}</span>
+                </div>
+                ${r.reason ? `<div style="font-size:12px;color:var(--text-faint);margin-top:4px">💬 ${r.reason}</div>` : ''}
+              </div>
+              ${statusBadge(r.status)}
+            </div>
+            ${r.status === 'rejected' && r.rejectionReason ? `
+              <div style="margin-top:8px;padding:10px;background:var(--danger-soft);border-radius:8px;font-size:13px;color:var(--danger)">
+                ❌ ${r.rejectionReason}
+              </div>` : ''}
+            ${r.status === 'approved' ? `
+              <div style="margin-top:8px;padding:10px;background:var(--success-soft);border-radius:8px;font-size:13px;color:var(--success)">
+                ✅ Approved on ${r.reviewedAt ? formatDate(r.reviewedAt) : '—'}
+              </div>` : ''}
+            ${r.status === 'pending' ? `
+              <div class="card-actions" style="margin-top:12px;flex-wrap:wrap">
+                <button class="btn btn-primary btn-sm" data-approve-req="${r._id}">✅ Approve</button>
+                <button class="btn btn-danger btn-sm" data-reject-req="${r._id}">❌ Reject</button>
+              </div>
+              <div id="reject-form-${r._id}" style="display:none;margin-top:10px">
+                <div class="form-row">
+                  <label>Rejection Reason *</label>
+                  <textarea id="reject-reason-${r._id}" rows="2" placeholder="e.g. Item currently unavailable"></textarea>
+                </div>
+                <button class="btn btn-danger btn-sm" data-confirm-reject="${r._id}">Confirm Rejection</button>
+                <button class="btn btn-ghost btn-sm" data-cancel-reject="${r._id}">Cancel</button>
+              </div>` : ''}
+          </div>`;
+      }).join('')}
+    </div>`}
+  `;
+
+  // Attach approve/reject listeners
+  document.querySelectorAll('[data-approve-req]').forEach(btn => {
+    const reqId = btn.getAttribute('data-approve-req')!;
+    btn.addEventListener('click', async () => {
+      if (!confirm('Approve this request? This will deduct inventory and add material to project.')) return;
+      (btn as HTMLButtonElement).disabled = true;
+      try {
+        await api('PATCH', `/material-requests/${reqId}/approve`, { adminId: currentUserId });
+        toast('Request approved! Inventory updated and material added.');
+        allInventoryItems = await fetchInventory();
+        renderH2AllRequests(container);
+      } catch (e: unknown) {
+        toast((e as Error).message, 'error');
+        (btn as HTMLButtonElement).disabled = false;
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-reject-req]').forEach(btn => {
+    const reqId = btn.getAttribute('data-reject-req')!;
+    btn.addEventListener('click', () => {
+      const form = document.getElementById(`reject-form-${reqId}`);
+      if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    });
+  });
+
+  document.querySelectorAll('[data-confirm-reject]').forEach(btn => {
+    const reqId = btn.getAttribute('data-confirm-reject')!;
+    btn.addEventListener('click', async () => {
+      const reason = (document.getElementById(`reject-reason-${reqId}`) as HTMLTextAreaElement)?.value.trim();
+      if (!reason) { toast('Rejection reason is required', 'error'); return; }
+      (btn as HTMLButtonElement).disabled = true;
+      try {
+        await api('PATCH', `/material-requests/${reqId}/reject`, {
+          adminId: currentUserId,
+          rejectionReason: reason,
+        });
+        toast('Request rejected.');
+        renderH2AllRequests(container);
+      } catch (e: unknown) {
+        toast((e as Error).message, 'error');
+        (btn as HTMLButtonElement).disabled = false;
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-cancel-reject]').forEach(btn => {
+    const reqId = btn.getAttribute('data-cancel-reject')!;
+    btn.addEventListener('click', () => {
+      const form = document.getElementById(`reject-form-${reqId}`);
+      if (form) form.style.display = 'none';
+    });
+  });
+}
+
+// ── ALLOCATIONS TAB (admin) ───────────────────────────────────────────────────
+
+async function renderH2Allocations(container: HTMLElement) {
+  if (currentRole !== 'project_admin') {
+    container.innerHTML = '<div class="empty-state"><div class="emoji">🔒</div><p>Access restricted to Project Admin.</p></div>';
+    return;
+  }
+
+  if (!currentUserId) {
+    container.innerHTML = '<div class="empty-state"><div class="emoji">👤</div><p>Please enter your User ID first.</p></div>';
+    return;
+  }
+
+  const result = await fetchAllAllocations(currentUserId);
+  const allocations: InventoryAllocation[] = result.data;
+
+  container.innerHTML = `
+    <div class="section-label">Inventory Allocations — ${allocations.length} total</div>
+    <p style="font-size:12px;color:var(--text-faint);margin-bottom:16px">Permanent history of Guitar inventory allocated to projects. There is no return workflow.</p>
+    ${allocations.length === 0 ? '<div class="empty-state"><div class="emoji">📊</div><p>No allocations yet.</p></div>' : `
+    <table class="team-table">
+      <thead>
+        <tr><th>Material</th><th>Project</th><th>Quantity</th><th>Allocated By</th><th>Date</th></tr>
+      </thead>
+      <tbody>
+        ${allocations.map(a => {
+          const item = typeof a.inventoryItemId === 'object' ? a.inventoryItemId : null;
+          const proj = typeof a.projectId === 'object' ? a.projectId : null;
+          const by   = typeof a.allocatedBy === 'object' ? a.allocatedBy : null;
+          return `
+            <tr>
+              <td><strong>${item ? item.name : '—'}</strong></td>
+              <td>${proj ? proj.name : '—'}</td>
+              <td><span class="qty-badge">${a.quantity}</span></td>
+              <td style="font-size:12px;color:var(--text-faint)">${by ? by.name : '—'}</td>
+              <td style="font-size:12px;color:var(--text-faint)">${formatDate(a.allocatedAt)}</td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`}
+  `;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── TASK 2I: NOTIFICATION HELPERS ─────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** Fetch all notifications for current user and render the panel. */
+async function loadNotifications() {
+  if (!currentUserId) return;
+  try {
+    const data = await api<{ data: AppNotification[]; unreadCount: number }>(
+      'GET', `/notifications?userId=${currentUserId}&limit=50`
+    );
+    notifList = data.data;
+    notifUnreadCount = data.unreadCount;
+    updateUnreadBadge();
+    renderNotificationPanel();
+  } catch { /* silently ignore if user not set */ }
+}
+
+/** Update the red badge on the bell icon. */
+function updateUnreadBadge() {
+  const badge = document.getElementById('notif-badge');
+  if (!badge) return;
+  if (notifUnreadCount > 0) {
+    badge.textContent = notifUnreadCount > 99 ? '99+' : String(notifUnreadCount);
+    badge.style.display = 'flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+/** Render the notification list inside the panel. */
+function renderNotificationPanel() {
+  const container = document.getElementById('notif-list');
+  if (!container) return;
+
+  if (!notifList.length) {
+    container.innerHTML = `
+      <div class="empty-state" style="padding:32px">
+        <div class="emoji">🔕</div>
+        <p>No notifications yet.</p>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = notifList.map(n => `
+    <div class="notif-item ${n.isRead ? 'notif-read' : 'notif-unread'}" data-notif-id="${n._id}">
+      <div class="notif-dot" ${n.isRead ? 'style="opacity:0"' : ''}></div>
+      <div class="notif-body">
+        <div class="notif-title">${n.title}</div>
+        <div class="notif-message">${n.message}</div>
+        <div class="notif-time">${formatDate(n.createdAt)}</div>
+      </div>
+    </div>`).join('');
+
+  // Clicking an unread notification marks it as read
+  container.querySelectorAll('.notif-item').forEach(el => {
+    el.addEventListener('click', async () => {
+      const id = (el as HTMLElement).dataset.notifId!;
+      const notif = notifList.find(n => n._id === id);
+      if (!notif || notif.isRead) return;
+      try {
+        await api('PATCH', `/notifications/${id}/read`, { userId: currentUserId });
+        notif.isRead = true;
+        notifUnreadCount = Math.max(0, notifUnreadCount - 1);
+        updateUnreadBadge();
+        renderNotificationPanel();
+      } catch (e: unknown) { toast((e as Error).message, 'error'); }
+    });
+  });
+}
+
+/** Poll unread count every 30 seconds while a userId is set. */
+function startNotifPolling() {
+  if (notifPollInterval) clearInterval(notifPollInterval);
+  notifPollInterval = window.setInterval(async () => {
+    if (!currentUserId) return;
+    try {
+      const data = await api<{ count: number }>('GET', `/notifications/unread-count?userId=${currentUserId}`);
+      notifUnreadCount = data.count;
+      updateUnreadBadge();
+    } catch { /* ignore */ }
+  }, 30_000);
+}
+
+// Start polling immediately
+startNotifPolling();

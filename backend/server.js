@@ -11,6 +11,11 @@ import { clubJoinRouter, projectJoinRouter, joinRequestRouter } from './src/rout
 import { projectMentorRouter, mentorRouter } from './src/routes/projectMentorRoutes.js';
 import projectUpdateRoutes from './src/routes/projectUpdateRoutes.js';
 import eventRoutes, { clubEventsRouter } from './src/routes/eventRoutes.js';
+import projectMaterialRoutes from './src/routes/projectMaterialRoutes.js';
+import inventoryRoutes from './src/routes/inventoryRoutes.js';
+import materialRequestRoutes from './src/routes/materialRequestRoutes.js';
+import allocationRoutes from './src/routes/allocationRoutes.js';
+import notificationRoutes from './src/routes/notificationRoutes.js';
 
 // ─── App Setup ────────────────────────────────────────────────────────────────
 const app = express();
@@ -41,6 +46,11 @@ app.use('/api/mentors', mentorRouter);            // GET /api/mentors/:mentorId/
 app.use('/api/projects', projectUpdateRoutes);    // Task 2F: updates + feedback
 app.use('/api/events', eventRoutes);              // Task 2G: events CRUD + upcoming
 app.use('/api/clubs', clubEventsRouter);           // Task 2G: GET /api/clubs/:clubId/events
+app.use('/api/projects', projectMaterialRoutes);   // Task 2H: team, team-leader, materials
+app.use('/api/inventory', inventoryRoutes);        // Task 2H: Guitar inventory CRUD
+app.use('/api/material-requests', materialRequestRoutes); // Task 2H: material request workflow
+app.use('/api/allocations', allocationRoutes);     // Task 2H: inventory allocation history
+app.use('/api/notifications', notificationRoutes); // Task 2I: notifications
 
 // ─── 404 Fallback ─────────────────────────────────────────────────────────────
 app.use((_req, res) => {

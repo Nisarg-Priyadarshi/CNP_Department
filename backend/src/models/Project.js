@@ -33,6 +33,15 @@ const projectSchema = new mongoose.Schema(
       ref: 'User',
       required: [true, 'createdBy is required'],
     },
+
+    // Task 2H: Team Leader — must be a student who is a member of this project.
+    // Only one Team Leader per project. Assigned/changed by Project Admin.
+    // null means no Team Leader is currently assigned.
+    teamLeaderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
   },
   { timestamps: true }
 );

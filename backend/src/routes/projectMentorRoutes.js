@@ -2,6 +2,7 @@ import express from 'express';
 import Project from '../models/Project.js';
 import User from '../models/User.js';
 import ProjectMentor from '../models/ProjectMentor.js';
+import { createNotification } from '../services/notificationService.js';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // PROJECT MENTOR ROUTER
@@ -79,6 +80,17 @@ projectMentorRouter.post('/:projectId/mentors', async (req, res) => {
 
     await assignment.populate('mentorId', 'name email role');
     await assignment.populate('projectId', 'name status');
+
+    // Notify the Faculty Mentor about their assignment
+    createNotification({
+      userId: mentorId,
+      type: 'mentor_assigned',
+      title: 'Assigned as Project Mentor',
+      message: isPrimary
+        ? `You have been assigned as the PRIMARY mentor for project "${project.name}".`
+        : `You have been assigned as a mentor for project "${project.name}".`,
+      relatedId: project._id,
+    }).catch((e) => console.error('[Notification] mentor_assigned:', e.message));
 
     res.status(201).json({
       success: true,

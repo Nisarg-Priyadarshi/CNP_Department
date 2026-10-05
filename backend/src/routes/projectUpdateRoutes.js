@@ -34,6 +34,7 @@ import ProjectMembership from '../models/ProjectMembership.js';
 import ProjectMentor  from '../models/ProjectMentor.js';
 import ProjectUpdate  from '../models/ProjectUpdate.js';
 import ProjectFeedback from '../models/ProjectFeedback.js';
+import { createNotifications } from '../services/notificationService.js';
 
 const router = express.Router();
 
@@ -157,7 +158,19 @@ router.post('/:projectId/updates', async (req, res) => {
     await update.populate('studentId', 'name email role');
     await update.populate('projectId', 'name status');
 
-    // TODO (Task 2G+): emit notification to assigned mentors
+    // Notify all Faculty Mentors assigned to this project (no duplicates — one per mentor)
+    const mentorAssignments = await ProjectMentor.find({ projectId }).select('mentorId');
+    if (mentorAssignments.length > 0) {
+      createNotifications(
+        mentorAssignments.map((a) => ({
+          userId: a.mentorId,
+          type: 'project_update',
+          title: 'New Project Update',
+          message: `${student.name} posted a new update "${update.title}" on project "${project.name}".`,
+          relatedId: update._id,
+        }))
+      ).catch((e) => console.error('[Notification] project_update batch:', e.message));
+    }
 
     res.status(201).json({
       success: true,
