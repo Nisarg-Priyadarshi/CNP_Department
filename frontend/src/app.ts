@@ -3,9 +3,16 @@
  * Task 2G — Club Events Management Frontend
  * Task 2H — Project Materials, Inventory & Material Requests Frontend
  * Task 2I — Notifications System Frontend
+ * Task 2J — Authentication Foundation Frontend
  *
  * Single-page application (vanilla TS + Vite).
  * Communicates with backend at http://localhost:5000.
+ *
+ * Authentication:
+ *   - auth.ts is the entry point; it manages AuthContext and login/register UI.
+ *   - After successful authentication, auth.ts dynamically imports this file.
+ *   - The authenticated token is read from window.__cnp_auth_token__.
+ *   - All API calls include Authorization: Bearer <token> automatically.
  *
  * Roles supported for 2F:
  *   - student        → create updates, view updates, view feedback for own projects
@@ -27,8 +34,14 @@
  */
 
 import './app.css';
+import { logout, getStoredToken } from './auth.ts';
 
 const API = 'http://localhost:5000/api';
+
+// ── Authentication: read authenticated user injected by auth.ts ───────────────
+interface AuthUser { _id: string; name: string; email: string; role: string; }
+const _w = window as Window & typeof globalThis & { __cnp_auth_user__?: AuthUser | null };
+const _authUser: AuthUser | null = _w.__cnp_auth_user__ ?? null;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -82,6 +95,7 @@ interface ProjectMaterial {
   inventoryItemId: null | { _id: string; name: string; category: string };
   materialRequestId: null | string;
   addedBy: { _id: string; name: string; role: string } | string;
+  image?: string;
   createdAt: string;
 }
 
@@ -131,9 +145,9 @@ interface AppNotification {
 // STATE
 // ══════════════════════════════════════════════════════════════════════════════
 
-// 2F state
-let currentUserId    = '';
-let currentRole      = 'student';
+// 2F state — pre-populated from the authenticated user
+let currentUserId    = _authUser?._id ?? '';
+let currentRole      = _authUser?.role ?? 'student';
 let currentProjectId = '';
 let allProjects: Project[] = [];
 let activeTab        = 'updates';
@@ -159,14 +173,33 @@ let notifPollInterval: number | undefined;
 // ══════════════════════════════════════════════════════════════════════════════
 
 async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const opts: RequestInit = {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-  };
+  // Automatically inject the Authorization: Bearer token for all API calls
+  const token = getStoredToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const opts: RequestInit = { method, headers };
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(`${API}${path}`, opts);
   const json = await res.json();
   if (!json.success) throw new Error(json.message || 'Request failed');
+  return json as T;
+}
+
+async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const res = await fetch(`${API}${path}`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+  const json = await res.json();
+  if (!json.success) throw new Error(json.message || 'Upload failed');
   return json as T;
 }
 
@@ -432,19 +465,24 @@ async function handleCreateUpdate(e: Event) {
   const form = e.target as HTMLFormElement;
   const title       = (form.querySelector('#new-title') as HTMLInputElement).value.trim();
   const description = (form.querySelector('#new-desc') as HTMLTextAreaElement).value.trim();
-  const fileUrl     = (form.querySelector('#new-file-url') as HTMLInputElement).value.trim();
+  const fileInput   = form.querySelector('#new-files') as HTMLInputElement;
 
   if (!title || !description) { toast('Title and description are required', 'error'); return; }
 
-  const files = fileUrl ? [{ name: fileUrl, url: fileUrl }] : [];
+  const fd = new FormData();
+  fd.append('title', title);
+  fd.append('description', description);
+  
+  if (fileInput.files) {
+    for (let i = 0; i < fileInput.files.length; i++) {
+      fd.append('files', fileInput.files[i]);
+    }
+  }
 
   const btn = form.querySelector('button[type="submit"]') as HTMLButtonElement;
   btn.disabled = true;
   try {
-    await api('POST', `/projects/${currentProjectId}/updates`, {
-      studentId: currentUserId,
-      title, description, files,
-    });
+    await apiUpload(`/projects/${currentProjectId}/updates`, fd);
     toast('Update submitted successfully!');
     form.reset();
     renderUpdatesTab();
@@ -454,6 +492,7 @@ async function handleCreateUpdate(e: Event) {
     btn.disabled = false;
   }
 }
+
 
 async function handleDeleteUpdate(updateId: string) {
   if (!confirm('Delete this update? This will also remove associated feedback.')) return;
@@ -799,11 +838,13 @@ function renderApp() {
         CNP Department
       </div>
       <div style="display:flex;align-items:center;gap:12px">
-        <span class="header-badge">Tasks 2F–2I</span>
+        <span class="header-badge">Tasks 2F–2J</span>
+        ${_authUser ? `<span style="font-size:12px;color:var(--text-faint)">👤 ${_authUser.name}</span>` : ''}
         <button class="notif-bell" id="notif-bell" title="Notifications">
           🔔
           <span class="notif-badge" id="notif-badge" style="display:none">0</span>
         </button>
+        <button class="btn btn-ghost btn-sm" id="btn-logout" title="Sign out" style="font-size:12px">🚪 Logout</button>
       </div>
     </header>
 
@@ -822,8 +863,14 @@ function renderApp() {
     </div>
 
     <main>
-      <!-- ─── User Config ─── -->
-      <div class="config-bar">
+      <!-- ─── Auth Info Bar ─── -->
+      ${_authUser ? `
+      <div class="config-bar" style="background:var(--bg-card);border-bottom:1px solid var(--border);padding:10px 24px">
+        <span style="font-size:13px;color:var(--text-faint)">🔐 Signed in as <strong style="color:var(--text)">${_authUser.name}</strong> &bull; <span class="badge badge-${_authUser.role === 'student' ? 'student' : 'admin'}">${_authUser.role.replace('_', ' ')}</span></span>
+      </div>` : ''}
+
+      <!-- ─── User Config (kept for backward compat with existing dev flows) ─── -->
+      <div class="config-bar" style="display:none" id="config-bar-legacy">
         <div class="form-row">
           <label for="input-user-id">Your User ID</label>
           <input type="text" id="input-user-id" placeholder="Paste your MongoDB User _id" value="${currentUserId}" />
@@ -855,8 +902,16 @@ function renderApp() {
     <div id="toast-container"></div>
   `;
 
-  document.getElementById('btn-apply')!.addEventListener('click', onApplyRole);
-  document.getElementById('input-role')!.addEventListener('change', (e) => {
+  // ── 2J: Logout button ─────────────────────────────────────────────────────
+  document.getElementById('btn-logout')?.addEventListener('click', async () => {
+    if (confirm('Are you sure you want to sign out?')) {
+      await logout();
+    }
+  });
+
+  // Legacy dev config bar (hidden when authenticated)
+  document.getElementById('btn-apply')?.addEventListener('click', onApplyRole);
+  document.getElementById('input-role')?.addEventListener('change', (e) => {
     currentRole = (e.target as HTMLSelectElement).value;
   });
 
@@ -1170,8 +1225,8 @@ async function renderTabContent() {
             <textarea id="new-desc" placeholder="Describe what was done this update..." required></textarea>
           </div>
           <div class="form-row">
-            <label for="new-file-url">File URL (optional)</label>
-            <input type="url" id="new-file-url" placeholder="https://drive.google.com/..." />
+            <label for="new-files">Attachments (optional, up to 5)</label>
+            <input type="file" id="new-files" multiple accept=".pdf,.doc,.docx,image/*" />
           </div>
           <button type="submit" class="btn btn-primary">🚀 Submit Update</button>
         </form>
@@ -1567,6 +1622,10 @@ async function renderH2Materials(container: HTMLElement) {
             <option value="owned">Already Owned</option>
           </select>
         </div>
+        <div class="form-row">
+          <label for="h2-mat-image">Image (optional)</label>
+          <input type="file" id="h2-mat-image" accept="image/*" />
+        </div>
         <button type="submit" class="btn btn-primary">➕ Add Material</button>
       </form>
     </div>` : '';
@@ -1577,11 +1636,12 @@ async function renderH2Materials(container: HTMLElement) {
     ${materials.length === 0 ? '<div class="empty-state"><div class="emoji">📦</div><p>No materials recorded yet.</p></div>' : `
     <table class="team-table">
       <thead>
-        <tr><th>Material Name</th><th>Quantity</th><th>Source</th><th>Added By</th><th>Date</th></tr>
+        <tr><th>Image</th><th>Material Name</th><th>Quantity</th><th>Source</th><th>Added By</th><th>Date</th></tr>
       </thead>
       <tbody>
         ${materials.map(m => `
           <tr>
+            <td>${m.image ? `<img src="${m.image}" alt="Material" style="width:40px;height:40px;object-fit:cover;border-radius:4px;" />` : '—'}</td>
             <td><strong>${m.name}</strong></td>
             <td><span class="qty-badge">${m.quantity}</span></td>
             <td>${sourceLabel(m.source)}</td>
@@ -1598,14 +1658,23 @@ async function renderH2Materials(container: HTMLElement) {
       const name   = (document.getElementById('h2-mat-name') as HTMLInputElement).value.trim();
       const qty    = Number((document.getElementById('h2-mat-qty') as HTMLInputElement).value);
       const source = (document.getElementById('h2-mat-source') as HTMLSelectElement).value;
+      const fileInput = document.getElementById('h2-mat-image') as HTMLInputElement;
+
       if (!name || !qty) { toast('Name and quantity are required', 'error'); return; }
+      
+      const fd = new FormData();
+      fd.append('leaderId', currentUserId);
+      fd.append('name', name);
+      fd.append('quantity', String(qty));
+      fd.append('source', source);
+      if (fileInput.files && fileInput.files[0]) {
+        fd.append('image', fileInput.files[0]);
+      }
+
       const btn = (e.target as HTMLFormElement).querySelector('button[type="submit"]') as HTMLButtonElement;
       btn.disabled = true;
       try {
-        await api('POST', `/projects/${currentProjectId}/materials`, {
-          leaderId: currentUserId,
-          name, quantity: qty, source,
-        });
+        await apiUpload(`/projects/${currentProjectId}/materials`, fd);
         toast('Material added!');
         (e.target as HTMLFormElement).reset();
         renderH2Materials(container);

@@ -1,5 +1,5 @@
 /**
- * Task 2F — Project Updates & Mentor Feedback Routes
+ * Task 2F — Project Updates & Mentor Feedback Routes (secured in 2J Part 2)
  *
  * All routes are mounted under /api/projects (see server.js).
  *
@@ -15,14 +15,12 @@
  *   GET    /api/projects/:projectId/feedback                        — list feedback (member/mentor/admin)
  *   GET    /api/projects/:projectId/updates/:updateId/feedback      — feedback for a specific update
  *
- * Permission model (no auth middleware yet — caller sends their userId in body/query):
- *   - student:        must belong to the project (ProjectMembership)
+ * SECURITY (2J Part 2):
+ *   - All routes now require authentication via requireAuth.
+ *   - Actor identity is derived from req.user.userId — never trusted from body/query.
+ *   - student: must belong to the project (ProjectMembership)
  *   - faculty_mentor: must be assigned to the project (ProjectMentor)
- *   - project_admin:  always allowed (manages all projects)
- *
- * NOTE: The existing codebase does NOT have an auth middleware; it follows the
- * pattern of receiving userId/studentId/mentorId from the request body, matching
- * the architecture used throughout 2A–2E.
+ *   - project_admin: always allowed (manages all projects)
  */
 
 import express from 'express';
@@ -35,6 +33,9 @@ import ProjectMentor  from '../models/ProjectMentor.js';
 import ProjectUpdate  from '../models/ProjectUpdate.js';
 import ProjectFeedback from '../models/ProjectFeedback.js';
 import { createNotifications } from '../services/notificationService.js';
+import { requireAuth } from '../middleware/requireAuth.js';
+import { uploadMixed, getBase64DataURI, handleUploadError } from '../middleware/upload.js';
+import { uploadImage, uploadRaw } from '../services/cloudinaryService.js';
 
 const router = express.Router();
 
@@ -48,7 +49,7 @@ function isValidObjectId(id) {
 }
 
 /**
- * Resolve access for project-scoped endpoints.
+ * Resolve access for project-scoped endpoints using req.user (JWT-derived).
  *
  * Returns an object:
  *   { allowed: boolean, reason?: string, role?: string }
@@ -59,17 +60,14 @@ function isValidObjectId(id) {
  *  3. student who is a member of the project → allowed
  *  4. everyone else → denied
  */
-async function resolveProjectAccess(userId, projectId) {
-  const user = await User.findById(userId).select('name email role');
-  if (!user) return { allowed: false, reason: 'User not found' };
-
+async function resolveProjectAccess(user, projectId) {
   if (user.role === 'project_admin') {
-    return { allowed: true, role: 'project_admin', user };
+    return { allowed: true, role: 'project_admin' };
   }
 
   if (user.role === 'faculty_mentor') {
-    const assignment = await ProjectMentor.findOne({ projectId, mentorId: userId });
-    if (assignment) return { allowed: true, role: 'faculty_mentor', user };
+    const assignment = await ProjectMentor.findOne({ projectId, mentorId: user.userId });
+    if (assignment) return { allowed: true, role: 'faculty_mentor' };
     return {
       allowed: false,
       reason: 'You are not assigned as a mentor for this project',
@@ -77,8 +75,8 @@ async function resolveProjectAccess(userId, projectId) {
   }
 
   if (user.role === 'student') {
-    const membership = await ProjectMembership.findOne({ projectId, studentId: userId });
-    if (membership) return { allowed: true, role: 'student', user };
+    const membership = await ProjectMembership.findOne({ projectId, studentId: user.userId });
+    if (membership) return { allowed: true, role: 'student' };
     return {
       allowed: false,
       reason: 'You are not a member of this project',
@@ -94,66 +92,87 @@ async function resolveProjectAccess(userId, projectId) {
 
 // ── POST /api/projects/:projectId/updates ────────────────────────────────────
 // Student creates a project update.
-// Body: { studentId, title, description, files? }
-router.post('/:projectId/updates', async (req, res) => {
-  try {
-    const { projectId } = req.params;
-    const { studentId, title, description, files } = req.body;
+// SECURITY: studentId derived from req.user.userId — never from body.
+router.post(
+  '/:projectId/updates',
+  requireAuth,
+  uploadMixed.array('files', 5),
+  handleUploadError,
+  async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const { title, description } = req.body;
+      const studentId = req.user.userId; // SECURITY: from JWT
 
-    // ── Validate required fields ──────────────────────────────────────────
-    if (!studentId) {
-      return res.status(400).json({ success: false, message: 'studentId is required' });
-    }
-    if (!title || !title.trim()) {
-      return res.status(400).json({ success: false, message: 'title is required' });
-    }
-    if (!description || !description.trim()) {
-      return res.status(400).json({ success: false, message: 'description is required' });
-    }
+      // ── Validate required fields ──────────────────────────────────────────
+      if (!title || !title.trim()) {
+        return res.status(400).json({ success: false, message: 'title is required' });
+      }
+      if (!description || !description.trim()) {
+        return res.status(400).json({ success: false, message: 'description is required' });
+      }
 
-    // ── Validate IDs ──────────────────────────────────────────────────────
-    if (!isValidObjectId(projectId)) {
-      return res.status(400).json({ success: false, message: 'Invalid project ID format' });
-    }
-    if (!isValidObjectId(studentId)) {
-      return res.status(400).json({ success: false, message: 'Invalid studentId format' });
-    }
+      // ── Validate IDs ──────────────────────────────────────────────────────
+      if (!isValidObjectId(projectId)) {
+        return res.status(400).json({ success: false, message: 'Invalid project ID format' });
+      }
 
-    // ── Verify project exists ─────────────────────────────────────────────
-    const project = await Project.findById(projectId);
-    if (!project) {
-      return res.status(404).json({ success: false, message: 'Project not found' });
-    }
+      // ── Verify caller is a student ────────────────────────────────────────
+      if (req.user.role !== 'student') {
+        return res.status(403).json({
+          success: false,
+          message: 'Only users with role "student" can create project updates',
+        });
+      }
 
-    // ── Verify student exists and has role = student ───────────────────────
-    const student = await User.findById(studentId);
-    if (!student) {
-      return res.status(404).json({ success: false, message: 'Student not found' });
-    }
-    if (student.role !== 'student') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only users with role "student" can create project updates',
+      // ── Verify project exists ─────────────────────────────────────────────
+      const project = await Project.findById(projectId);
+      if (!project) {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+
+      // ── Verify student is a member of this project ────────────────────────
+      const membership = await ProjectMembership.findOne({ projectId, studentId });
+      if (!membership) {
+        return res.status(403).json({
+          success: false,
+          message: 'You must be a member of this project to submit an update',
+        });
+      }
+
+      // ── Process uploaded files ────────────────────────────────────────────
+      const uploadedFiles = [];
+      if (req.files && req.files.length > 0) {
+        for (const file of req.files) {
+          const fileUri = getBase64DataURI(file);
+          let uploadResult;
+          
+          if (file.mimetype.startsWith('image/')) {
+            uploadResult = await uploadImage(fileUri, { folder: 'cnp/project-updates' });
+          } else {
+            uploadResult = await uploadRaw(fileUri, { 
+              folder: 'cnp/project-updates',
+              originalName: file.originalname,
+              mimeType: file.mimetype
+            });
+          }
+
+          uploadedFiles.push({
+            url: uploadResult.secure_url,
+            publicId: uploadResult.public_id,
+            originalName: file.originalname
+          });
+        }
+      }
+
+      // ── Create the update ─────────────────────────────────────────────────
+      const update = await ProjectUpdate.create({
+        projectId,
+        studentId,
+        title: title.trim(),
+        description: description.trim(),
+        files: uploadedFiles,
       });
-    }
-
-    // ── Verify student is a member of this project ────────────────────────
-    const membership = await ProjectMembership.findOne({ projectId, studentId });
-    if (!membership) {
-      return res.status(403).json({
-        success: false,
-        message: 'You must be a member of this project to submit an update',
-      });
-    }
-
-    // ── Create the update ─────────────────────────────────────────────────
-    const update = await ProjectUpdate.create({
-      projectId,
-      studentId,
-      title: title.trim(),
-      description: description.trim(),
-      files: Array.isArray(files) ? files : [],
-    });
 
     await update.populate('studentId', 'name email role');
     await update.populate('projectId', 'name status');
@@ -166,7 +185,7 @@ router.post('/:projectId/updates', async (req, res) => {
           userId: a.mentorId,
           type: 'project_update',
           title: 'New Project Update',
-          message: `${student.name} posted a new update "${update.title}" on project "${project.name}".`,
+          message: `${req.user.name} posted a new update "${update.title}" on project "${project.name}".`,
           relatedId: update._id,
         }))
       ).catch((e) => console.error('[Notification] project_update batch:', e.message));
@@ -187,21 +206,13 @@ router.post('/:projectId/updates', async (req, res) => {
 
 // ── GET /api/projects/:projectId/updates ─────────────────────────────────────
 // List all updates for a project.
-// Query: { userId }  — the caller's user ID (for access check)
-router.get('/:projectId/updates', async (req, res) => {
+// SECURITY: access resolved from req.user — no userId query param needed.
+router.get('/:projectId/updates', requireAuth, async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { userId } = req.query;
-
-    if (!userId) {
-      return res.status(400).json({ success: false, message: 'userId query parameter is required' });
-    }
 
     if (!isValidObjectId(projectId)) {
       return res.status(400).json({ success: false, message: 'Invalid project ID format' });
-    }
-    if (!isValidObjectId(userId)) {
-      return res.status(400).json({ success: false, message: 'Invalid userId format' });
     }
 
     // Verify project exists
@@ -210,8 +221,8 @@ router.get('/:projectId/updates', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Project not found' });
     }
 
-    // Resolve access
-    const access = await resolveProjectAccess(userId, projectId);
+    // Resolve access using JWT identity
+    const access = await resolveProjectAccess(req.user, projectId);
     if (!access.allowed) {
       return res.status(403).json({ success: false, message: access.reason });
     }
@@ -236,15 +247,10 @@ router.get('/:projectId/updates', async (req, res) => {
 
 // ── GET /api/projects/:projectId/updates/:updateId ───────────────────────────
 // Retrieve a single update.
-// Query: { userId }
-router.get('/:projectId/updates/:updateId', async (req, res) => {
+// SECURITY: access resolved from req.user.
+router.get('/:projectId/updates/:updateId', requireAuth, async (req, res) => {
   try {
     const { projectId, updateId } = req.params;
-    const { userId } = req.query;
-
-    if (!userId) {
-      return res.status(400).json({ success: false, message: 'userId query parameter is required' });
-    }
 
     if (!isValidObjectId(projectId)) {
       return res.status(400).json({ success: false, message: 'Invalid project ID format' });
@@ -252,16 +258,13 @@ router.get('/:projectId/updates/:updateId', async (req, res) => {
     if (!isValidObjectId(updateId)) {
       return res.status(400).json({ success: false, message: 'Invalid update ID format' });
     }
-    if (!isValidObjectId(userId)) {
-      return res.status(400).json({ success: false, message: 'Invalid userId format' });
-    }
 
     const project = await Project.findById(projectId);
     if (!project) {
       return res.status(404).json({ success: false, message: 'Project not found' });
     }
 
-    const access = await resolveProjectAccess(userId, projectId);
+    const access = await resolveProjectAccess(req.user, projectId);
     if (!access.allowed) {
       return res.status(403).json({ success: false, message: access.reason });
     }
@@ -293,15 +296,12 @@ router.get('/:projectId/updates/:updateId', async (req, res) => {
 
 // ── PATCH /api/projects/:projectId/updates/:updateId ─────────────────────────
 // Student edits their own update (title, description, files only).
-// Body: { studentId, title?, description?, files? }
-router.patch('/:projectId/updates/:updateId', async (req, res) => {
+// SECURITY: studentId from req.user.userId — ownership verified against update.studentId.
+router.patch('/:projectId/updates/:updateId', requireAuth, async (req, res) => {
   try {
     const { projectId, updateId } = req.params;
-    const { studentId, title, description, files } = req.body;
-
-    if (!studentId) {
-      return res.status(400).json({ success: false, message: 'studentId is required' });
-    }
+    const { title, description, files } = req.body;
+    const studentId = req.user.userId; // SECURITY: from JWT
 
     if (!isValidObjectId(projectId)) {
       return res.status(400).json({ success: false, message: 'Invalid project ID format' });
@@ -309,24 +309,18 @@ router.patch('/:projectId/updates/:updateId', async (req, res) => {
     if (!isValidObjectId(updateId)) {
       return res.status(400).json({ success: false, message: 'Invalid update ID format' });
     }
-    if (!isValidObjectId(studentId)) {
-      return res.status(400).json({ success: false, message: 'Invalid studentId format' });
+
+    // Role check: only students can edit updates
+    if (req.user.role !== 'student') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only students can edit project updates',
+      });
     }
 
     const project = await Project.findById(projectId);
     if (!project) {
       return res.status(404).json({ success: false, message: 'Project not found' });
-    }
-
-    const student = await User.findById(studentId);
-    if (!student) {
-      return res.status(404).json({ success: false, message: 'Student not found' });
-    }
-    if (student.role !== 'student') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only students can edit project updates',
-      });
     }
 
     const update = await ProjectUpdate.findById(updateId);
@@ -389,15 +383,11 @@ router.patch('/:projectId/updates/:updateId', async (req, res) => {
 
 // ── DELETE /api/projects/:projectId/updates/:updateId ────────────────────────
 // Student deletes their own update.
-// Body: { studentId }
-router.delete('/:projectId/updates/:updateId', async (req, res) => {
+// SECURITY: ownership derived from req.user.userId.
+router.delete('/:projectId/updates/:updateId', requireAuth, async (req, res) => {
   try {
     const { projectId, updateId } = req.params;
-    const { studentId } = req.body;
-
-    if (!studentId) {
-      return res.status(400).json({ success: false, message: 'studentId is required' });
-    }
+    const studentId = req.user.userId; // SECURITY: from JWT
 
     if (!isValidObjectId(projectId)) {
       return res.status(400).json({ success: false, message: 'Invalid project ID format' });
@@ -405,24 +395,18 @@ router.delete('/:projectId/updates/:updateId', async (req, res) => {
     if (!isValidObjectId(updateId)) {
       return res.status(400).json({ success: false, message: 'Invalid update ID format' });
     }
-    if (!isValidObjectId(studentId)) {
-      return res.status(400).json({ success: false, message: 'Invalid studentId format' });
+
+    // Role check
+    if (req.user.role !== 'student') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only students can delete project updates',
+      });
     }
 
     const project = await Project.findById(projectId);
     if (!project) {
       return res.status(404).json({ success: false, message: 'Project not found' });
-    }
-
-    const student = await User.findById(studentId);
-    if (!student) {
-      return res.status(404).json({ success: false, message: 'Student not found' });
-    }
-    if (student.role !== 'student') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only students can delete project updates',
-      });
     }
 
     const update = await ProjectUpdate.findById(updateId);
@@ -444,6 +428,26 @@ router.delete('/:projectId/updates/:updateId', async (req, res) => {
         success: false,
         message: 'You can only delete your own project updates',
       });
+    }
+
+    // Delete Cloudinary assets
+    if (update.files && update.files.length > 0) {
+      for (const file of update.files) {
+        if (file.publicId) {
+          try {
+            // Determine resource_type based on mimetype or fallback to trying both
+            // If we don't know the resource_type, deleteAsset might fail.
+            // Since we upload raw for documents and image for images:
+            // We can infer it from the publicId or just try both.
+            // Cloudinary's destroy requires the correct resource_type.
+            // Since our old implementation didn't store resourceType, we might have to guess.
+            // Or just attempt 'raw' then 'image'.
+            await deleteAsset(file.publicId, 'raw').catch(() => deleteAsset(file.publicId, 'image'));
+          } catch (err) {
+            console.error(`Failed to delete asset ${file.publicId}:`, err.message);
+          }
+        }
+      }
     }
 
     await ProjectUpdate.deleteOne({ _id: updateId });
@@ -469,16 +473,14 @@ router.delete('/:projectId/updates/:updateId', async (req, res) => {
 
 // ── POST /api/projects/:projectId/feedback ───────────────────────────────────
 // Faculty mentor (assigned to project) OR project_admin adds feedback.
-// Body: { mentorId, feedbackText, updateId? }
-router.post('/:projectId/feedback', async (req, res) => {
+// SECURITY: mentorId derived from req.user.userId — never from body.
+router.post('/:projectId/feedback', requireAuth, async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { mentorId, feedbackText, updateId } = req.body;
+    const { feedbackText, updateId } = req.body;
+    const mentorId = req.user.userId; // SECURITY: from JWT, never from body
 
     // ── Required field validation ──────────────────────────────────────────
-    if (!mentorId) {
-      return res.status(400).json({ success: false, message: 'mentorId is required' });
-    }
     if (!feedbackText || !feedbackText.trim()) {
       return res.status(400).json({ success: false, message: 'feedbackText is required' });
     }
@@ -486,9 +488,6 @@ router.post('/:projectId/feedback', async (req, res) => {
     // ── ID validation ──────────────────────────────────────────────────────
     if (!isValidObjectId(projectId)) {
       return res.status(400).json({ success: false, message: 'Invalid project ID format' });
-    }
-    if (!isValidObjectId(mentorId)) {
-      return res.status(400).json({ success: false, message: 'Invalid mentorId format' });
     }
     if (updateId && !isValidObjectId(updateId)) {
       return res.status(400).json({ success: false, message: 'Invalid updateId format' });
@@ -500,16 +499,10 @@ router.post('/:projectId/feedback', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Project not found' });
     }
 
-    // ── Verify mentor user exists ─────────────────────────────────────────
-    const mentor = await User.findById(mentorId);
-    if (!mentor) {
-      return res.status(404).json({ success: false, message: 'Mentor user not found' });
-    }
-
     // ── Permission check ──────────────────────────────────────────────────
-    if (mentor.role === 'project_admin') {
+    if (req.user.role === 'project_admin') {
       // Project admins can always add feedback
-    } else if (mentor.role === 'faculty_mentor') {
+    } else if (req.user.role === 'faculty_mentor') {
       // Must be assigned to THIS project
       const assignment = await ProjectMentor.findOne({ projectId, mentorId });
       if (!assignment) {
@@ -542,7 +535,7 @@ router.post('/:projectId/feedback', async (req, res) => {
     // ── Create feedback ───────────────────────────────────────────────────
     const feedback = await ProjectFeedback.create({
       projectId,
-      mentorId,
+      mentorId, // SECURITY: from JWT
       updateId: updateId || null,
       feedbackText: feedbackText.trim(),
     });
@@ -552,8 +545,6 @@ router.post('/:projectId/feedback', async (req, res) => {
     if (feedback.updateId) {
       await feedback.populate('updateId', 'title description');
     }
-
-    // TODO (Task 2G+): emit notification to project members
 
     res.status(201).json({
       success: true,
@@ -570,21 +561,13 @@ router.post('/:projectId/feedback', async (req, res) => {
 
 // ── GET /api/projects/:projectId/feedback ────────────────────────────────────
 // List all feedback for a project.
-// Query: { userId }
-router.get('/:projectId/feedback', async (req, res) => {
+// SECURITY: access resolved from req.user — no userId query param needed.
+router.get('/:projectId/feedback', requireAuth, async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { userId } = req.query;
-
-    if (!userId) {
-      return res.status(400).json({ success: false, message: 'userId query parameter is required' });
-    }
 
     if (!isValidObjectId(projectId)) {
       return res.status(400).json({ success: false, message: 'Invalid project ID format' });
-    }
-    if (!isValidObjectId(userId)) {
-      return res.status(400).json({ success: false, message: 'Invalid userId format' });
     }
 
     const project = await Project.findById(projectId);
@@ -592,7 +575,7 @@ router.get('/:projectId/feedback', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Project not found' });
     }
 
-    const access = await resolveProjectAccess(userId, projectId);
+    const access = await resolveProjectAccess(req.user, projectId);
     if (!access.allowed) {
       return res.status(403).json({ success: false, message: access.reason });
     }
@@ -618,15 +601,10 @@ router.get('/:projectId/feedback', async (req, res) => {
 
 // ── GET /api/projects/:projectId/updates/:updateId/feedback ──────────────────
 // List feedback associated with a specific update.
-// Query: { userId }
-router.get('/:projectId/updates/:updateId/feedback', async (req, res) => {
+// SECURITY: access resolved from req.user.
+router.get('/:projectId/updates/:updateId/feedback', requireAuth, async (req, res) => {
   try {
     const { projectId, updateId } = req.params;
-    const { userId } = req.query;
-
-    if (!userId) {
-      return res.status(400).json({ success: false, message: 'userId query parameter is required' });
-    }
 
     if (!isValidObjectId(projectId)) {
       return res.status(400).json({ success: false, message: 'Invalid project ID format' });
@@ -634,16 +612,13 @@ router.get('/:projectId/updates/:updateId/feedback', async (req, res) => {
     if (!isValidObjectId(updateId)) {
       return res.status(400).json({ success: false, message: 'Invalid update ID format' });
     }
-    if (!isValidObjectId(userId)) {
-      return res.status(400).json({ success: false, message: 'Invalid userId format' });
-    }
 
     const project = await Project.findById(projectId);
     if (!project) {
       return res.status(404).json({ success: false, message: 'Project not found' });
     }
 
-    const access = await resolveProjectAccess(userId, projectId);
+    const access = await resolveProjectAccess(req.user, projectId);
     if (!access.allowed) {
       return res.status(403).json({ success: false, message: access.reason });
     }

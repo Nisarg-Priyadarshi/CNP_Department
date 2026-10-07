@@ -16,8 +16,12 @@ const clubSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    logoPublicId: {
+      type: String,
+      default: null,
+    },
     images: {
-      type: [String],
+      type: [mongoose.Schema.Types.Mixed],
       default: [],
     },
     // One faculty coordinator per club; references User with role faculty_coordinator

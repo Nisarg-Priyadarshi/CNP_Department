@@ -56,6 +56,14 @@ const projectMaterialSchema = new mongoose.Schema(
       ref: 'User',
       required: [true, 'addedBy is required'],
     },
+    image: {
+      type: String,
+      default: null,
+    },
+    imagePublicId: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true }
 );

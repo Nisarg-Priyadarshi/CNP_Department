@@ -4,6 +4,7 @@ import cors from 'cors';
 
 import connectDB from './config/db.js';
 import healthRoutes from './routes/healthRoutes.js';
+import authRoutes from './src/routes/authRoutes.js';
 import userRoutes from './src/routes/userRoutes.js';
 import clubRoutes from './src/routes/clubRoutes.js';
 import projectRoutes from './src/routes/projectRoutes.js';
@@ -16,6 +17,13 @@ import inventoryRoutes from './src/routes/inventoryRoutes.js';
 import materialRequestRoutes from './src/routes/materialRequestRoutes.js';
 import allocationRoutes from './src/routes/allocationRoutes.js';
 import notificationRoutes from './src/routes/notificationRoutes.js';
+
+// ─── Validate required environment variables ───────────────────────────────────
+if (!process.env.JWT_SECRET) {
+  console.error('❌  FATAL: JWT_SECRET environment variable is not set.');
+  console.error('   Add JWT_SECRET to your .env file. See .env.example.');
+  process.exit(1);
+}
 
 // ─── App Setup ────────────────────────────────────────────────────────────────
 const app = express();
@@ -35,7 +43,15 @@ app.use(express.urlencoded({ extended: true }));
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api', healthRoutes);
+
+// Task 2J: Authentication routes (public — no requireAuth wrapper here)
+app.use('/api/auth', authRoutes);
+
+// ── User routes ────────────────────────────────────────────────────────────────
+// NOTE: POST /api/users/test is a DEV-ONLY convenience endpoint.
+// It is guarded inside userRoutes.js based on NODE_ENV.
 app.use('/api/users', userRoutes);
+
 app.use('/api/clubs', clubRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/clubs', clubJoinRouter);         // POST /api/clubs/:clubId/join
@@ -63,6 +79,10 @@ const startServer = async () => {
 
   app.listen(PORT, () => {
     console.log(`🚀  Server running on http://localhost:${PORT}`);
+    console.log(`🔐  Auth API: http://localhost:${PORT}/api/auth`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`⚠️   DEV: Test user route active at POST /api/users/test`);
+    }
   });
 };
 

@@ -1,44 +1,32 @@
 /**
- * Task 2H — Inventory Allocations Routes
+ * Task 2H — Inventory Allocations Routes (SECURED in 2J Part 2)
  * Mounted at: /api/allocations  (via server.js)
  *
+ * SECURITY (2J Part 2):
+ *   - All routes require authentication via requireAuth.
+ *   - project_admin required for all allocation views (global access).
+ *   - Identity comes from req.user (JWT) — adminId query param IGNORED.
+ *
  * Routes:
- *   GET  /                         — all allocations (admin only)
- *   GET  /project/:projectId       — allocations for a specific project
- *   GET  /inventory/:itemId        — allocations for a specific inventory item
+ *   GET  /                         — all allocations (project_admin only)
+ *   GET  /project/:projectId       — allocations for a specific project (project_admin only)
+ *   GET  /inventory/:itemId        — allocations for a specific inventory item (project_admin only)
  */
 
 import express from 'express';
-import User from '../models/User.js';
 import Project from '../models/Project.js';
 import GuitarInventory from '../models/GuitarInventory.js';
 import InventoryAllocation from '../models/InventoryAllocation.js';
+import { requireAuth } from '../middleware/requireAuth.js';
+import { requireRole } from '../middleware/requireRole.js';
 
 const router = express.Router();
 
-async function requireAdmin(adminId, res) {
-  if (!adminId) {
-    res.status(400).json({ success: false, message: 'adminId query param is required' });
-    return null;
-  }
-  const admin = await User.findById(adminId);
-  if (!admin) {
-    res.status(404).json({ success: false, message: 'Admin user not found' });
-    return null;
-  }
-  if (admin.role !== 'project_admin') {
-    res.status(403).json({ success: false, message: 'Only project_admin can view allocation records' });
-    return null;
-  }
-  return admin;
-}
-
 // ── GET /api/allocations ──────────────────────────────────────────────────────
-router.get('/', async (req, res) => {
+// All allocations — project_admin only.
+// SECURITY: requireAuth + requireRole enforce identity from JWT.
+router.get('/', requireAuth, requireRole('project_admin'), async (_req, res) => {
   try {
-    const admin = await requireAdmin(req.query.adminId, res);
-    if (!admin) return;
-
     const allocations = await InventoryAllocation.find()
       .populate('inventoryItemId', 'name category totalQuantity availableQuantity')
       .populate('projectId', 'name status')
@@ -53,11 +41,9 @@ router.get('/', async (req, res) => {
 });
 
 // ── GET /api/allocations/project/:projectId ───────────────────────────────────
-router.get('/project/:projectId', async (req, res) => {
+// Allocations for a specific project — project_admin only.
+router.get('/project/:projectId', requireAuth, requireRole('project_admin'), async (req, res) => {
   try {
-    const admin = await requireAdmin(req.query.adminId, res);
-    if (!admin) return;
-
     const { projectId } = req.params;
     const project = await Project.findById(projectId);
     if (!project) {
@@ -84,11 +70,9 @@ router.get('/project/:projectId', async (req, res) => {
 });
 
 // ── GET /api/allocations/inventory/:itemId ────────────────────────────────────
-router.get('/inventory/:itemId', async (req, res) => {
+// Allocations for a specific inventory item — project_admin only.
+router.get('/inventory/:itemId', requireAuth, requireRole('project_admin'), async (req, res) => {
   try {
-    const admin = await requireAdmin(req.query.adminId, res);
-    if (!admin) return;
-
     const { itemId } = req.params;
     const item = await GuitarInventory.findById(itemId);
     if (!item) {

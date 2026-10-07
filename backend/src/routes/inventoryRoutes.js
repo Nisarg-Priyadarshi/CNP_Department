@@ -1,50 +1,35 @@
 /**
- * Task 2H — Guitar Inventory Routes
+ * Task 2H — Guitar Inventory Routes (secured in 2J Part 2)
  * Mounted at: /api/inventory  (via server.js)
  *
- * Only project_admin can manage inventory.
- * All users can read inventory (for material request form).
+ * SECURITY (2J Part 2):
+ *   - All routes require authentication.
+ *   - project_admin role required for write operations (derived from JWT, never client body).
+ *   - GET / and GET /:itemId remain readable by all authenticated users
+ *     (students need to see inventory to submit material requests).
+ *   - GET /:itemId/allocations — project_admin only.
  *
  * Routes:
- *   GET    /                     — list all inventory items
- *   POST   /                     — create inventory item (admin only)
- *   GET    /:itemId               — get single item
- *   PUT    /:itemId               — update item (name, desc, category, location)
- *   PATCH  /:itemId/quantity      — adjust quantity (admin only)
- *   DELETE /:itemId               — delete item (admin only)
- *   GET    /:itemId/allocations   — allocations for a specific item
+ *   GET    /                     — list all inventory items (all authenticated)
+ *   POST   /                     — create inventory item (project_admin only)
+ *   GET    /:itemId               — get single item (all authenticated)
+ *   PUT    /:itemId               — update item (project_admin only)
+ *   PATCH  /:itemId/quantity      — adjust quantity (project_admin only)
+ *   DELETE /:itemId               — delete item (project_admin only)
+ *   GET    /:itemId/allocations   — allocations for a specific item (project_admin only)
  */
 
 import express from 'express';
 import GuitarInventory from '../models/GuitarInventory.js';
 import InventoryAllocation from '../models/InventoryAllocation.js';
-import User from '../models/User.js';
+import { requireAuth } from '../middleware/requireAuth.js';
+import { requireRole } from '../middleware/requireRole.js';
 
 const router = express.Router();
 
-// ── Helper: verify requester is project_admin ─────────────────────────────────
-async function requireAdmin(adminId, res) {
-  if (!adminId) {
-    res.status(400).json({ success: false, message: 'adminId is required in request body' });
-    return null;
-  }
-  const admin = await User.findById(adminId);
-  if (!admin) {
-    res.status(404).json({ success: false, message: 'Admin user not found' });
-    return null;
-  }
-  if (admin.role !== 'project_admin') {
-    res.status(403).json({
-      success: false,
-      message: 'Only project_admin users can perform this action',
-    });
-    return null;
-  }
-  return admin;
-}
-
 // ── GET /api/inventory ────────────────────────────────────────────────────────
-router.get('/', async (_req, res) => {
+// Readable by any authenticated user (students need this for material requests).
+router.get('/', requireAuth, async (_req, res) => {
   try {
     const items = await GuitarInventory.find()
       .populate('createdBy', 'name email role')
@@ -61,12 +46,11 @@ router.get('/', async (_req, res) => {
 });
 
 // ── POST /api/inventory ───────────────────────────────────────────────────────
-router.post('/', async (req, res) => {
+// SECURITY: project_admin only. createdBy from req.user.userId.
+router.post('/', requireAuth, requireRole('project_admin'), async (req, res) => {
   try {
-    const { adminId, name, description, category, totalQuantity, availableQuantity, location } = req.body;
-
-    const admin = await requireAdmin(adminId, res);
-    if (!admin) return;
+    const { name, description, category, totalQuantity, availableQuantity, location } = req.body;
+    const createdBy = req.user.userId; // SECURITY: from JWT, never from body
 
     if (!name) {
       return res.status(400).json({ success: false, message: 'name is required' });
@@ -90,7 +74,7 @@ router.post('/', async (req, res) => {
       totalQuantity: Number(totalQuantity),
       availableQuantity: avail,
       location: location || '',
-      createdBy: admin._id,
+      createdBy, // SECURITY: JWT-derived
     });
 
     await item.populate('createdBy', 'name email role');
@@ -109,7 +93,8 @@ router.post('/', async (req, res) => {
 });
 
 // ── GET /api/inventory/:itemId ────────────────────────────────────────────────
-router.get('/:itemId', async (req, res) => {
+// Readable by any authenticated user.
+router.get('/:itemId', requireAuth, async (req, res) => {
   try {
     const { itemId } = req.params;
     const item = await GuitarInventory.findById(itemId).populate('createdBy', 'name email role');
@@ -126,14 +111,12 @@ router.get('/:itemId', async (req, res) => {
 });
 
 // ── PUT /api/inventory/:itemId ────────────────────────────────────────────────
-// Update name, description, category, location (not quantity — use PATCH /quantity)
-router.put('/:itemId', async (req, res) => {
+// Update name, description, category, location (not quantity — use PATCH /quantity).
+// SECURITY: project_admin only.
+router.put('/:itemId', requireAuth, requireRole('project_admin'), async (req, res) => {
   try {
     const { itemId } = req.params;
-    const { adminId, name, description, category, location } = req.body;
-
-    const admin = await requireAdmin(adminId, res);
-    if (!admin) return;
+    const { name, description, category, location } = req.body;
 
     const item = await GuitarInventory.findById(itemId);
     if (!item) {
@@ -163,14 +146,12 @@ router.put('/:itemId', async (req, res) => {
 
 // ── PATCH /api/inventory/:itemId/quantity ─────────────────────────────────────
 // Increase or decrease totalQuantity and availableQuantity manually by Admin.
-// Body: { adminId, action: 'increase'|'decrease'|'set', amount, availableAmount? }
-router.patch('/:itemId/quantity', async (req, res) => {
+// Body: { action: 'increase'|'decrease'|'set', amount, availableAmount? }
+// SECURITY: project_admin only. No adminId in body needed.
+router.patch('/:itemId/quantity', requireAuth, requireRole('project_admin'), async (req, res) => {
   try {
     const { itemId } = req.params;
-    const { adminId, action, amount } = req.body;
-
-    const admin = await requireAdmin(adminId, res);
-    if (!admin) return;
+    const { action, amount } = req.body;
 
     if (!action || !['increase', 'decrease', 'set'].includes(action)) {
       return res.status(400).json({
@@ -240,13 +221,10 @@ router.patch('/:itemId/quantity', async (req, res) => {
 });
 
 // ── DELETE /api/inventory/:itemId ─────────────────────────────────────────────
-router.delete('/:itemId', async (req, res) => {
+// SECURITY: project_admin only. No adminId in body needed.
+router.delete('/:itemId', requireAuth, requireRole('project_admin'), async (req, res) => {
   try {
     const { itemId } = req.params;
-    const { adminId } = req.body;
-
-    const admin = await requireAdmin(adminId, res);
-    if (!admin) return;
 
     const item = await GuitarInventory.findById(itemId);
     if (!item) {
@@ -268,8 +246,8 @@ router.delete('/:itemId', async (req, res) => {
 });
 
 // ── GET /api/inventory/:itemId/allocations ────────────────────────────────────
-// Admin-only: see which projects received this item
-router.get('/:itemId/allocations', async (req, res) => {
+// project_admin only: see which projects received this item.
+router.get('/:itemId/allocations', requireAuth, requireRole('project_admin'), async (req, res) => {
   try {
     const { itemId } = req.params;
 

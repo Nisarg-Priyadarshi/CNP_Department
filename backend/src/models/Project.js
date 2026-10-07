@@ -18,6 +18,10 @@ const projectSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    imagePublicId: {
+      type: String,
+      default: null,
+    },
     status: {
       type: String,
       required: [true, 'Project status is required'],
