@@ -138,7 +138,8 @@ export async function logout(): Promise<void> {
     await authFetch('POST', '/auth/logout');
   } catch { /* ignore network errors on logout */ }
   clearToken();
-  // Re-render the auth page (login screen)
+  // Redirect to login
+  window.history.pushState({}, '', '/login');
   renderAuthPage();
 }
 
@@ -210,7 +211,7 @@ function renderLogin(app: HTMLElement, errorMsg?: string) {
 
         <p class="auth-switch">
           Don't have an account?
-          <a href="#" id="link-to-register">Create one</a>
+          <a href="/register" id="link-to-register">Create one</a>
         </p>
       </div>
       <div id="toast-container"></div>
@@ -242,7 +243,8 @@ function renderLogin(app: HTMLElement, errorMsg?: string) {
 
   document.getElementById('link-to-register')!.addEventListener('click', (e) => {
     e.preventDefault();
-    renderRegister(app);
+    window.history.pushState({}, '', '/register');
+    renderAuthPage();
   });
 }
 
@@ -324,7 +326,7 @@ function renderRegister(app: HTMLElement, errorMsg?: string) {
 
         <p class="auth-switch">
           Already have an account?
-          <a href="#" id="link-to-login">Sign in</a>
+          <a href="/login" id="link-to-login">Sign in</a>
         </p>
       </div>
       <div id="toast-container"></div>
@@ -381,7 +383,8 @@ function renderRegister(app: HTMLElement, errorMsg?: string) {
 
   document.getElementById('link-to-login')!.addEventListener('click', (e) => {
     e.preventDefault();
-    renderLogin(app);
+    window.history.pushState({}, '', '/login');
+    renderAuthPage();
   });
 }
 
@@ -418,8 +421,23 @@ async function loadMainApp() {
 
 function renderAuthPage() {
   const app = document.getElementById('app')!;
-  renderLogin(app);
+  const path = window.location.pathname;
+  if (path === '/register') {
+    renderRegister(app);
+  } else {
+    if (path !== '/login') {
+      window.history.replaceState({}, '', '/login');
+    }
+    renderLogin(app);
+  }
 }
+
+// Handle browser back/forward buttons on auth pages
+window.addEventListener('popstate', () => {
+  if (!auth.user) {
+    renderAuthPage();
+  }
+});
 
 // ══════════════════════════════════════════════════════════════════════════════
 // BOOT — Protected Route Guard
@@ -446,6 +464,9 @@ async function boot() {
 
   if (isAuthenticated) {
     // ✅ Valid session — load the main application
+    if (window.location.pathname === '/login' || window.location.pathname === '/register' || window.location.pathname === '/') {
+      window.history.replaceState({}, '', '/dashboard');
+    }
     await loadMainApp();
   } else {
     // 🔒 No valid session — show the login page

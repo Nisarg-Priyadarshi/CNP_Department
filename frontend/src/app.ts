@@ -39,7 +39,17 @@ import { logout, getStoredToken } from './auth.ts';
 const API = 'http://localhost:5000/api';
 
 // ── Authentication: read authenticated user injected by auth.ts ───────────────
-interface AuthUser { _id: string; name: string; email: string; role: string; }
+interface AuthUser {
+  _id: string;
+  name: string;
+  email: string;
+  role: string;
+  department?: string | null;
+  universityId?: string | null;
+  phone?: string | null;
+  bio?: string | null;
+  profileImage?: string | null;
+}
 const _w = window as Window & typeof globalThis & { __cnp_auth_user__?: AuthUser | null };
 const _authUser: AuthUser | null = _w.__cnp_auth_user__ ?? null;
 
@@ -156,7 +166,21 @@ let activeTab        = 'updates';
 let allClubs: Club[]         = [];
 let currentClubId            = '';
 let eventsMainSection        = 'upcoming'; // 'upcoming' | 'manage' | 'club'
-let mainSection              = 'projects'; // 'projects' | 'events' | 'materials'
+
+// ── NAVIGATION CONFIG ─────────────────────────────────────────────────────────
+const NAVIGATION = [
+  { id: 'dashboard', path: '/dashboard', label: 'Dashboard', icon: '📊', roles: ['student', 'faculty_coordinator', 'faculty_mentor', 'club_admin', 'project_admin'] },
+  { id: 'clubs', path: '/clubs', label: 'Clubs', icon: '🏛', roles: ['student', 'faculty_coordinator', 'faculty_mentor', 'club_admin', 'project_admin'] },
+  { id: 'projects', path: '/projects', label: 'Projects', icon: '📋', roles: ['student', 'faculty_coordinator', 'faculty_mentor', 'club_admin', 'project_admin'] },
+  { id: 'events', path: '/events', label: 'Events', icon: '🗓', roles: ['student', 'faculty_coordinator', 'faculty_mentor', 'club_admin', 'project_admin'] },
+  { id: 'notifications', path: '/notifications', label: 'Notifications', icon: '🔔', roles: ['student', 'faculty_coordinator', 'faculty_mentor', 'club_admin', 'project_admin'] },
+  { id: 'profile', path: '/profile', label: 'Profile', icon: '👤', roles: ['student', 'faculty_coordinator', 'faculty_mentor', 'club_admin', 'project_admin'] },
+  { id: 'inventory', path: '/inventory', label: 'Inventory', icon: '🏭', roles: ['project_admin'] },
+  { id: 'material-requests', path: '/material-requests', label: 'Material Requests', icon: '📦', roles: ['project_admin'] },
+  { id: 'project-management', path: '/project-management', label: 'Project Management', icon: '⚙️', roles: ['project_admin'] },
+];
+
+let currentPath = window.location.pathname;
 
 // 2H state
 let allInventoryItems: GuitarInventoryItem[] = [];
@@ -831,6 +855,9 @@ function openEventEditModal(ev: ClubEvent) {
 
 function renderApp() {
   const app = document.getElementById('app')!;
+
+  const navLinks = NAVIGATION.filter(n => n.roles.includes(currentRole));
+  
   app.innerHTML = `
     <header>
       <div class="header-brand">
@@ -838,7 +865,7 @@ function renderApp() {
         CNP Department
       </div>
       <div style="display:flex;align-items:center;gap:12px">
-        <span class="header-badge">Tasks 2F–2J</span>
+        <span class="header-badge">Tasks 2F–2L</span>
         ${_authUser ? `<span style="font-size:12px;color:var(--text-faint)">👤 ${_authUser.name}</span>` : ''}
         <button class="notif-bell" id="notif-bell" title="Notifications">
           🔔
@@ -862,41 +889,23 @@ function renderApp() {
       </div>
     </div>
 
-    <main>
-      <!-- ─── Auth Info Bar ─── -->
-      ${_authUser ? `
-      <div class="config-bar" style="background:var(--bg-card);border-bottom:1px solid var(--border);padding:10px 24px">
-        <span style="font-size:13px;color:var(--text-faint)">🔐 Signed in as <strong style="color:var(--text)">${_authUser.name}</strong> &bull; <span class="badge badge-${_authUser.role === 'student' ? 'student' : 'admin'}">${_authUser.role.replace('_', ' ')}</span></span>
-      </div>` : ''}
-
-      <!-- ─── User Config (kept for backward compat with existing dev flows) ─── -->
-      <div class="config-bar" style="display:none" id="config-bar-legacy">
-        <div class="form-row">
-          <label for="input-user-id">Your User ID</label>
-          <input type="text" id="input-user-id" placeholder="Paste your MongoDB User _id" value="${currentUserId}" />
+    <main style="display:flex; min-height: calc(100vh - 60px);">
+      <!-- ─── Main Navigation (Sidebar) ─── -->
+      <aside style="width: 250px; background: var(--bg-card); border-right: 1px solid var(--border); display: flex; flex-direction: column;">
+        <div style="padding:10px 24px; border-bottom:1px solid var(--border);">
+          <span style="font-size:13px;color:var(--text-faint)">🔐 Signed in as <strong style="color:var(--text)">${_authUser?.name || 'User'}</strong><br><span class="badge badge-${_authUser?.role === 'student' ? 'student' : 'admin'}" style="margin-top:4px;display:inline-block">${(_authUser?.role || 'student').replace('_', ' ')}</span></span>
         </div>
-        <div class="form-row">
-          <label for="input-role">Your Role</label>
-          <select id="input-role">
-            <option value="student"             ${currentRole === 'student'             ? 'selected' : ''}>Student</option>
-            <option value="faculty_coordinator" ${currentRole === 'faculty_coordinator' ? 'selected' : ''}>Faculty Coordinator</option>
-            <option value="faculty_mentor"      ${currentRole === 'faculty_mentor'      ? 'selected' : ''}>Faculty Mentor</option>
-            <option value="project_admin"       ${currentRole === 'project_admin'       ? 'selected' : ''}>Project Admin</option>
-            <option value="club_admin"          ${currentRole === 'club_admin'          ? 'selected' : ''}>Club Admin</option>
-          </select>
-        </div>
-        <button class="btn btn-primary" id="btn-apply" style="flex-shrink:0">Apply Role</button>
-      </div>
-
-      <!-- ─── Main Navigation ─── -->
-      <nav class="main-nav">
-        <button class="main-nav-btn ${mainSection === 'events' ? 'active' : ''}" id="nav-events">🗓 Events (2G)</button>
-        <button class="main-nav-btn ${mainSection === 'projects' ? 'active' : ''}" id="nav-projects">📋 Project Updates (2F)</button>
-        <button class="main-nav-btn ${mainSection === 'materials' ? 'active' : ''}" id="nav-materials">🔧 Materials &amp; Inventory (2H)</button>
-      </nav>
+        <nav class="main-nav" style="flex: 1; flex-direction: column; padding: 12px; gap: 4px; border-bottom: none;">
+          ${navLinks.map(n => `
+            <button class="main-nav-btn ${currentPath === n.path ? 'active' : ''}" style="width: 100%; text-align: left;" data-path="${n.path}">
+              ${n.icon} ${n.label}
+            </button>
+          `).join('')}
+        </nav>
+      </aside>
 
       <!-- ─── Content area ─── -->
-      <div id="content-area"></div>
+      <div id="content-area" style="flex: 1; padding: 24px; overflow-y: auto;"></div>
     </main>
 
     <div id="toast-container"></div>
@@ -909,34 +918,14 @@ function renderApp() {
     }
   });
 
-  // Legacy dev config bar (hidden when authenticated)
-  document.getElementById('btn-apply')?.addEventListener('click', onApplyRole);
-  document.getElementById('input-role')?.addEventListener('change', (e) => {
-    currentRole = (e.target as HTMLSelectElement).value;
-  });
-
-  document.getElementById('nav-events')!.addEventListener('click', () => {
-    mainSection = 'events';
-    document.getElementById('nav-events')!.classList.add('active');
-    document.getElementById('nav-projects')!.classList.remove('active');
-    document.getElementById('nav-materials')!.classList.remove('active');
-    renderEventsSection();
-  });
-
-  document.getElementById('nav-projects')!.addEventListener('click', () => {
-    mainSection = 'projects';
-    document.getElementById('nav-projects')!.classList.add('active');
-    document.getElementById('nav-events')!.classList.remove('active');
-    document.getElementById('nav-materials')!.classList.remove('active');
-    renderProjectsSection();
-  });
-
-  document.getElementById('nav-materials')!.addEventListener('click', () => {
-    mainSection = 'materials';
-    document.getElementById('nav-materials')!.classList.add('active');
-    document.getElementById('nav-events')!.classList.remove('active');
-    document.getElementById('nav-projects')!.classList.remove('active');
-    renderMaterialsSection();
+  // Navigation click listeners
+  document.querySelectorAll('.main-nav-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const path = (e.currentTarget as HTMLButtonElement).getAttribute('data-path');
+      if (path) {
+        navigate(path);
+      }
+    });
   });
 
   // ── 2I: Notification bell ─────────────────────────────────────────────────
@@ -958,16 +947,260 @@ function renderApp() {
     } catch (e: unknown) { toast((e as Error).message, 'error'); }
   });
 
-  // Load clubs for events
+  // Load common data
   fetchClubs().then(c => { allClubs = c; }).catch(() => {});
-  // Load inventory for 2H
   fetchInventory().then(items => { allInventoryItems = items; }).catch(() => {});
 
-  // Render default section
-  if (mainSection === 'events') renderEventsSection();
-  else if (mainSection === 'materials') renderMaterialsSection();
-  else renderProjectsSection();
+  // Initial render
+  route();
 }
+
+function navigate(path: string) {
+  if (currentPath === path) return;
+  window.history.pushState({}, '', path);
+  route();
+}
+
+function route() {
+  currentPath = window.location.pathname;
+  
+  // Update sidebar active state
+  document.querySelectorAll('.main-nav-btn').forEach(btn => {
+    if (btn.getAttribute('data-path') === currentPath) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+
+  // Check RBAC
+  const navItem = NAVIGATION.find(n => n.path === currentPath);
+  if (!navItem) {
+    if (currentPath === '/' || currentPath === '') {
+      navigate('/dashboard');
+      return;
+    }
+    document.getElementById('content-area')!.innerHTML = '<div class="empty-state"><h2>404 Not Found</h2><p>The page you are looking for does not exist.</p></div>';
+    return;
+  }
+  
+  if (!navItem.roles.includes(currentRole)) {
+    document.getElementById('content-area')!.innerHTML = '<div class="empty-state"><h2>403 Forbidden</h2><p>You do not have permission to view this page.</p></div>';
+    return;
+  }
+
+  // Render appropriate section
+  if (currentPath === '/dashboard') renderDashboardSection();
+  else if (currentPath === '/clubs') renderClubsPlaceholder();
+  else if (currentPath === '/projects') renderProjectsSection();
+  else if (currentPath === '/events') renderEventsSection();
+  else if (currentPath === '/notifications') renderNotificationsSection();
+  else if (currentPath === '/profile') renderProfileSection();
+  else if (currentPath === '/inventory') { h2MaterialsSubTab = 'inventory'; renderMaterialsSection(); }
+  else if (currentPath === '/material-requests') { h2MaterialsSubTab = 'allRequests'; renderMaterialsSection(); }
+  else if (currentPath === '/project-management') renderProjectManagementPlaceholder();
+}
+
+window.addEventListener('popstate', route);
+
+// ── PLACEHOLDERS & NEW SECTIONS ───────────────────────────────────────────────
+
+function renderClubsPlaceholder() {
+  document.getElementById('content-area')!.innerHTML = '<h2 class="section-title">🏛 Clubs</h2><div class="empty-state"><p>Club management UI not fully implemented yet.</p></div>';
+}
+
+function renderProjectManagementPlaceholder() {
+  document.getElementById('content-area')!.innerHTML = '<h2 class="section-title">⚙️ Project Management</h2><div class="empty-state"><p>Global project management UI not fully implemented yet.</p></div>';
+}
+
+function renderNotificationsSection() {
+  const area = document.getElementById('content-area')!;
+  area.innerHTML = `
+    <h2 class="section-title">🔔 Notifications</h2>
+    <p class="section-sub">View your recent notifications.</p>
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;">
+      <div id="full-notif-list"><div class="empty-state"><div class="spinner"></div></div></div>
+    </div>
+  `;
+  
+  // Reuse the notification panel loading logic but render it here
+  if (!currentUserId) return;
+  api<{ data: AppNotification[]; unreadCount: number }>('GET', `/notifications?userId=${currentUserId}&limit=50`)
+    .then(data => {
+      const container = document.getElementById('full-notif-list');
+      if (!container) return;
+      if (!data.data.length) {
+        container.innerHTML = '<div class="empty-state"><div class="emoji">🔕</div><p>No notifications yet.</p></div>';
+        return;
+      }
+      container.innerHTML = data.data.map(n => `
+        <div class="notif-item ${n.isRead ? 'notif-read' : 'notif-unread'}" style="margin-bottom:8px;border:1px solid var(--border);border-radius:8px">
+          <div class="notif-dot" ${n.isRead ? 'style="opacity:0"' : ''}></div>
+          <div class="notif-body">
+            <div class="notif-title">${n.title}</div>
+            <div class="notif-message">${n.message}</div>
+            <div class="notif-time">${formatDate(n.createdAt)}</div>
+          </div>
+        </div>`).join('');
+    })
+    .catch(e => {
+      const container = document.getElementById('full-notif-list');
+      if (container) container.innerHTML = `<div class="empty-state"><p>${e.message}</p></div>`;
+    });
+}
+
+function renderProfileSection() {
+  const area = document.getElementById('content-area')!;
+  if (!_authUser) return;
+  area.innerHTML = `
+    <h2 class="section-title">👤 Profile</h2>
+    <div class="card" style="max-width:600px">
+      <div class="card-header" style="align-items:flex-start">
+        <div style="display:flex;gap:16px;align-items:center">
+          ${_authUser.profileImage ? `<img src="${_authUser.profileImage}" style="width:80px;height:80px;border-radius:50%;object-fit:cover">` : `<div style="width:80px;height:80px;border-radius:50%;background:var(--bg-body);display:flex;align-items:center;justify-content:center;font-size:32px">👤</div>`}
+          <div>
+            <h3 style="margin:0;font-size:20px">${_authUser.name}</h3>
+            <p style="color:var(--text-faint);margin:4px 0 0">${_authUser.email}</p>
+            <span class="badge badge-${_authUser.role === 'student' ? 'student' : 'admin'}" style="margin-top:8px;display:inline-block">${_authUser.role.replace('_', ' ')}</span>
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+          <div>
+            <div style="font-size:12px;color:var(--text-faint)">Department</div>
+            <div>${_authUser.department || '—'}</div>
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--text-faint)">University ID</div>
+            <div>${_authUser.universityId || '—'}</div>
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--text-faint)">Phone</div>
+            <div>${_authUser.phone || '—'}</div>
+          </div>
+        </div>
+        <div style="margin-top:16px">
+          <div style="font-size:12px;color:var(--text-faint)">Bio</div>
+          <div>${_authUser.bio || '—'}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderDashboardSection() {
+  const area = document.getElementById('content-area')!;
+  
+  let roleSpecificCards = '';
+  
+  if (currentRole === 'student') {
+    roleSpecificCards = `
+      <div class="card">
+        <div class="card-title">Club Memberships</div>
+        <div class="card-body"><div class="empty-state" style="padding:16px"><p style="font-size:13px">Club membership data not yet connected.</p></div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Project Memberships</div>
+        <div class="card-body"><div class="empty-state" style="padding:16px"><p style="font-size:13px">Project membership data not yet connected.</p></div></div>
+      </div>
+    `;
+  } else if (currentRole === 'faculty_coordinator') {
+    roleSpecificCards = `
+      <div class="card">
+        <div class="card-title">Assigned Club</div>
+        <div class="card-body"><div class="empty-state" style="padding:16px"><p style="font-size:13px">Club data not yet connected.</p></div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Pending Join Requests</div>
+        <div class="card-body"><div class="empty-state" style="padding:16px"><p style="font-size:13px">Join requests workflow not yet connected.</p></div></div>
+      </div>
+    `;
+  } else if (currentRole === 'faculty_mentor') {
+    roleSpecificCards = `
+      <div class="card">
+        <div class="card-title">Assigned Projects</div>
+        <div class="card-body"><div class="empty-state" style="padding:16px"><p style="font-size:13px">Assigned projects summary not yet connected.</p></div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Pending Join Requests</div>
+        <div class="card-body"><div class="empty-state" style="padding:16px"><p style="font-size:13px">Project join requests not yet connected.</p></div></div>
+      </div>
+    `;
+  } else if (currentRole === 'club_admin') {
+    roleSpecificCards = `
+      <div class="card">
+        <div class="card-title">Club Management Summary</div>
+        <div class="card-body"><div class="empty-state" style="padding:16px"><p style="font-size:13px">Club management summary not yet connected.</p></div></div>
+      </div>
+    `;
+  } else if (currentRole === 'project_admin') {
+    roleSpecificCards = `
+      <div class="card">
+        <div class="card-title">Project Management Summary</div>
+        <div class="card-body"><div class="empty-state" style="padding:16px"><p style="font-size:13px">Global project management not yet connected.</p></div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Inventory Summary</div>
+        <div class="card-body"><div class="empty-state" style="padding:16px"><p style="font-size:13px">Inventory summary not yet connected.</p></div></div>
+      </div>
+    `;
+  }
+
+  area.innerHTML = `
+    <h2 class="section-title">📊 Dashboard</h2>
+    <p class="section-sub">Welcome back, ${_authUser?.name || 'User'}!</p>
+    
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:20px;margin-top:24px">
+      ${roleSpecificCards}
+      <div class="card">
+        <div class="card-title">Upcoming Events</div>
+        <div class="card-body" id="dash-events">
+          <div class="spinner"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Recent Notifications</div>
+        <div class="card-body" id="dash-notifs">
+          <div class="spinner"></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Load upcoming events summary
+  fetchUpcomingEvents().then(events => {
+    const el = document.getElementById('dash-events');
+    if (!el) return;
+    if (!events.length) {
+      el.innerHTML = '<p style="color:var(--text-faint);font-size:13px">No upcoming events.</p>';
+      return;
+    }
+    el.innerHTML = events.slice(0, 3).map(ev => `<div style="margin-bottom:8px;font-size:14px"><strong>${ev.title}</strong><br><span style="font-size:12px;color:var(--text-faint)">${formatDate(ev.eventDate)}</span></div>`).join('');
+  }).catch(() => {
+    const el = document.getElementById('dash-events');
+    if (el) el.innerHTML = '<p style="color:var(--danger);font-size:13px">Failed to load events.</p>';
+  });
+
+  // Load recent notifications summary
+  if (currentUserId) {
+    api<{ data: AppNotification[] }>('GET', `/notifications?userId=${currentUserId}&limit=3`)
+      .then(data => {
+        const el = document.getElementById('dash-notifs');
+        if (!el) return;
+        if (!data.data.length) {
+          el.innerHTML = '<p style="color:var(--text-faint);font-size:13px">No recent notifications.</p>';
+          return;
+        }
+        el.innerHTML = data.data.map(n => `<div style="margin-bottom:8px;font-size:14px">${n.isRead ? '' : '🔵 '}<strong>${n.title}</strong><br><span style="font-size:12px;color:var(--text-faint)">${n.message}</span></div>`).join('');
+      })
+      .catch(() => {
+        const el = document.getElementById('dash-notifs');
+        if (el) el.innerHTML = '<p style="color:var(--danger);font-size:13px">Failed to load notifications.</p>';
+      });
+  }
+}
+
 
 // ──────────────────────────────────────────────────────────────────────────────
 // EVENTS SECTION (2G)
@@ -1132,17 +1365,6 @@ function renderProjectsSection() {
   fetchProjects().then(p => { allProjects = p; renderProjectSelector(p); }).catch(() => {});
 }
 
-async function onApplyRole() {
-  currentUserId = (document.getElementById('input-user-id') as HTMLInputElement).value.trim();
-  currentRole   = (document.getElementById('input-role') as HTMLSelectElement).value;
-
-  if (!currentUserId) { toast('Please enter your User ID', 'error'); return; }
-  toast(`Role applied: ${currentRole}`);
-
-  // Re-render current section with new role
-  if (mainSection === 'events') renderEventsSection();
-  else renderProjectsSection();
-}
 
 async function onLoad() {
   currentUserId    = (document.getElementById('input-user-id') as HTMLInputElement).value.trim();
