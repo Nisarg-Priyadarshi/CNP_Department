@@ -26,7 +26,13 @@ The frontend is **React only**, with the existing toolchain:
 - TypeScript
 - Vite 8
 - React Router 7
-- Global styles in `frontend/src/app.css` (CSS custom properties, no component CSS framework)
+- Styles: CSS custom properties + one stylesheet per surface (no CSS framework, no CSS-in-JS):
+  - `frontend/src/tokens.css` — the only source of colour, space, type, shadow, motion
+  - `frontend/src/ui.css` — the signed-in primitive layer (keys, panels, rows, tables, tags, fields, modals)
+  - `frontend/src/components/layout/shell.css` — the app shell
+  - `frontend/src/pages/<Area>/*.css` — one area stylesheet each, class-prefixed
+  - `frontend/src/landing.css` + `base.css` — the public page
+  - `frontend/src/app.css` — the legacy sheet: login/register still live here; the rest is being retired
 - Shared API client: `frontend/src/services/api.ts`
 - Auth: `frontend/src/context/AuthContext.tsx`
 
@@ -54,9 +60,16 @@ Frontend dev server: Vite default (`npm run dev` in `frontend/`). Configure `VIT
 - **Layout:** `AppLayout`, `Sidebar` (`NAVIGATION` role-filtered), `Header` (page title, notification dropdown).
 - **Loading:** `LoadingScreen` during auth bootstrap, route transitions (`RouteTransition` in `App.tsx`), and some page spinners.
 
-**Styles:** Only `app.css` is loaded in production entry (`main.tsx` and `index.html`). Treat `frontend/src/style.css` and `main.ts` as unused Vite scaffold unless wired again.
+**Styles:** `main.tsx` loads `app.css` then `ui.css`; `app.css` `@import`s tokens, base and landing.
+Treat `frontend/src/style.css` and `main.ts` as unused Vite scaffold unless wired again.
+New work uses the primitives in `ui.css` and a token for every value — never a literal colour,
+never a raw length where a `--space-*` token exists.
 
-**Design identity:** The **login page** (`pages/Auth/Login.tsx` + `.login-*` in `app.css`) is the visual reference—deep indigo/navy story panel, gold accent dots, Inter typography, editorial spacing. Authenticated shell uses a related but lighter palette (`--accent` indigo, soft gray surfaces). Preserve login branding; extend identity into dashboards without redesigning login.
+**Design identity — Cobalt:** cool near-white paper, blue-black ink, hairlines over shadows, one
+electric cobalt signal (`--color-accent`) for action/active/selection, Familjen Grotesk titles over
+IBM Plex Sans body, cut corners on signature objects, tabular numerals. The public landing page and
+`docs/redesign-brief.md` are the reference for every new screen. The login page is the original brand
+anchor and must keep its story panel; the signed-in shell is its quieter sibling.
 
 ## Architecture (backend)
 
@@ -105,19 +118,39 @@ There is **no** frontend ESLint/Jest script in `package.json` today; run `npm ru
 ## Related documentation
 
 - `README.md` — overview (note: `PROJECT_DOCUMENTATION.md` is referenced but may be missing from the tree; rely on code and `docs/`).
-- `docs/student-dashboard.md` — Student Dashboard implementation brief.
+- `docs/redesign-brief.md` — the design contract for the signed-in app (tokens, primitives, page
+  anatomy, motion budget, accessibility floor, file fences).
+- `docs/backend-mocks.md` — everything the UI derives or mocks, with the endpoint that would replace it.
+- `docs/mocks/` — per-area detail behind that backlog.
+- `docs/student-dashboard.md` — the original Student Dashboard implementation brief.
 - `.cursor/rules/frontend-design.mdc` — visual and interaction standards.
 - `.cursor/rules/react-components.mdc` — React/TS component standards.
 
-## Current implementation notes (as of onboarding)
+## Current implementation notes
 
-- `Dashboard.tsx` is a **single file** with role-specific branches; student UI already uses `StudentClubCard` / `StudentProjectCard` but shares a generic page chrome with other roles.
-- Student club membership is resolved client-side by listing all clubs and calling `/clubs/:id/members` per club—**N+1 requests**; improving this requires a backend change (out of scope unless approved).
-- Some inline styles reference CSS variables such as `--primary` that are **not** defined in `:root` (use `--accent` / login navy tokens when styling new work).
+- **The shell** (`components/layout/*` + `shell.css`) owns the frame: graphite rail, paper header,
+  route transition loader. Pages render inside `.shell-content` and start flush with `.ui-page-head`.
+  Do not add outer margins or page-level backgrounds there.
+- **Dashboards are split by role**: `pages/Dashboard/Dashboard.tsx` is a thin router that delegates to
+  `StudentDashboardPage`, `CoordinatorDashboard`, `ClubAdminDashboard`, `MentorDashboard` and
+  `ProjectAdminDashboard`. The five experiences should stay distinguishable.
+- **`ui.css` is the shared vocabulary.** Pages compose `.ui-btn`, `.ui-panel`, `.ui-rows`, `.ui-table`,
+  `.ui-tag`, `.ui-field`, `.ui-modal`, `.ui-empty`, `.ui-skel`. If a primitive is missing, add it to
+  `ui.css` rather than re-inventing it per page.
+- **Every list is filtered/searched client-side** over a full fetch, and several counts are derived in
+  the browser. `docs/backend-mocks.md` is the backlog for moving those to the API — check it before
+  adding a new derived number.
+- **Two N+1 calls remain**, both documented: club membership per club and project rosters per project.
+  Do not add a third; prefer one endpoint change.
+- **`app.css` is legacy.** The class names it defines (`.card`, `.btn`, `.badge`, `.student-dash*`, …)
+  are largely unused by the new pages; do not build new work on them, and do not prune the file
+  without verifying every remaining consumer (login/register still depend on it).
 
 ## Task boundaries for agents
 
 - Inspect before implementing.
 - Do not delete existing project files without explicit instruction.
 - Do not commit unless the user asks.
-- For dashboard work: follow `docs/student-dashboard.md` and wait for approval after onboarding before large UI implementation.
+- For any UI work: follow `docs/redesign-brief.md` (tokens only, primitives from `ui.css`, focus and
+  reduced-motion states, no fabricated data) and keep the app's five role experiences distinct.
+- Do not rename or remove API calls, routes, guards or exported component props while restyling.
