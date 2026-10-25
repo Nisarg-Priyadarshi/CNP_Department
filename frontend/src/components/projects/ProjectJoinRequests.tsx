@@ -1,13 +1,28 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { Counter } from '../ui/vis';
 
 interface ProjectJoinRequestsProps {
   projectId: string;
   onUpdate?: () => void;
+  onCountChange?: (count: number) => void;
 }
 
-export function ProjectJoinRequests({ projectId, onUpdate }: ProjectJoinRequestsProps) {
+function initialOf(name?: string): string {
+  return (name || '?').replace(/^Dr\.\s*/i, '').trim().charAt(0).toUpperCase() || '?';
+}
+
+/* Waiting time as a short value, not a sentence: 42m, 6h, 3d. */
+function humanAge(ms: number): string {
+  const minutes = Math.max(0, Math.round(ms / 60000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.round(hours / 24)}d`;
+}
+
+export function ProjectJoinRequests({ projectId, onUpdate, onCountChange }: ProjectJoinRequestsProps) {
   const { user } = useAuth();
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,7 +41,9 @@ export function ProjectJoinRequests({ projectId, onUpdate }: ProjectJoinRequests
       const res = await api<any>('GET', `/join-requests/project/${projectId}`);
       setAuthorized(true);
       const allRequests = res.data || [];
-      setRequests(allRequests.filter((r: any) => r.status === 'pending'));
+      const pending = allRequests.filter((r: any) => r.status === 'pending');
+      setRequests(pending);
+      onCountChange?.(pending.length);
     } catch (err: any) {
       // 403 means user is not an assigned mentor for this project
       if (err.status !== 403) {
@@ -45,7 +62,9 @@ export function ProjectJoinRequests({ projectId, onUpdate }: ProjectJoinRequests
   const handleApprove = async (id: string) => {
     try {
       await api('PATCH', `/join-requests/${id}/approve`);
-      setRequests((prev) => prev.filter((r) => r._id !== id));
+      const next = requests.filter((r) => r._id !== id);
+      setRequests(next);
+      onCountChange?.(next.length);
       alert('Join request approved. Student has been added to the project team.');
       onUpdate?.();
     } catch (err: any) {
@@ -56,7 +75,9 @@ export function ProjectJoinRequests({ projectId, onUpdate }: ProjectJoinRequests
   const handleReject = async (id: string) => {
     try {
       await api('PATCH', `/join-requests/${id}/reject`);
-      setRequests((prev) => prev.filter((r) => r._id !== id));
+      const next = requests.filter((r) => r._id !== id);
+      setRequests(next);
+      onCountChange?.(next.length);
       alert('Join request rejected.');
     } catch (err: any) {
       alert(err.message || 'Failed to reject join request');
@@ -66,124 +87,113 @@ export function ProjectJoinRequests({ projectId, onUpdate }: ProjectJoinRequests
   if (!canReview || !authorized) return null;
   if (loading) return null;
 
-  return (
-    <div className="card" id="join-requests" style={{ marginBottom: '24px' }}>
-      <h3 className="card-title" style={{ marginBottom: '16px' }}>
-        Pending Join Requests
-      </h3>
-      <div className="card-body" style={{ padding: 0 }}>
-        {requests.length ? (
-          <div style={{ display: 'grid', gap: '12px' }}>
-            {requests.map((r) => (
-              <div
-                key={r._id}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  border: '1px solid var(--border)',
-                  padding: '16px',
-                  borderRadius: '12px',
-                  background: 'var(--bg-card-2)',
-                  flexWrap: 'wrap',
-                  gap: '12px',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div
-                    style={{
-                      width: '42px',
-                      height: '42px',
-                      borderRadius: '50%',
-                      background: 'var(--warn-soft)',
-                      color: 'var(--warn)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontWeight: 'bold',
-                      fontSize: '16px',
-                    }}
-                  >
-                    {(r.studentId?.name || '?').charAt(0)}
-                  </div>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontWeight: 600, color: 'var(--text)', fontSize: '15px' }}>
-                        {r.studentId?.name || 'Unknown Student'}
-                      </span>
-                      <span
-                        className="badge badge-warning"
-                        style={{
-                          fontSize: '11px',
-                          padding: '2px 8px',
-                          background: 'var(--warn-soft)',
-                          color: 'var(--warn)',
-                        }}
-                      >
-                        Pending
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '13px', marginTop: '2px' }}>
-                      <a
-                        href={`mailto:${r.studentId?.email}`}
-                        style={{ color: 'var(--primary)', textDecoration: 'none' }}
-                      >
-                        {r.studentId?.email}
-                      </a>
-                      {(r.studentId?.department || r.studentId?.semester || r.studentId?.enrollmentNumber) && (
-                        <span style={{ color: 'var(--text-faint)' }}>
-                          {' • '}
-                          {r.studentId?.enrollmentNumber && <span>Enrollment: {r.studentId.enrollmentNumber} • </span>}
-                          {r.studentId?.department}
-                          {r.studentId?.department && r.studentId?.semester ? ', ' : ''}
-                          {r.studentId?.semester ? `Semester ${r.studentId.semester}` : ''}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-faint)', marginTop: '4px' }}>
-                      Requested: {new Date(r.createdAt).toLocaleString()}
-                    </div>
-                  </div>
-                </div>
+  // Nothing to act on: the facts panel already says "None pending".
+  if (!requests.length) return null;
 
-                <div style={{ display: 'flex', gap: '8px' }}>
+  // MOCK: waiting time is derived from createdAt; the queue has no servedAt or
+  // SLA from the API. Suggested API: waitingSince / age on each join request.
+  const now = Date.now();
+  const ages = requests.map((request) => Math.max(0, now - new Date(request.createdAt).getTime()));
+  const oldest = Math.max(1, ...ages);
+  const oldestLabel = humanAge(oldest);
+
+  return (
+    <section className="ui-panel prj-joins" id="join-requests" aria-labelledby="prj-joins-title">
+      <header className="ui-panel__head">
+        <div className="ui-panel__titles">
+          <h2 className="ui-panel__title" id="prj-joins-title">
+            Join requests
+          </h2>
+          <span className="ui-panel__meta">
+            <Counter value={requests.length} />
+          </span>
+        </div>
+      </header>
+
+      {/* Depth: one tick per pending request, oldest at the left edge, now at the right. */}
+      <div className="prj-queue">
+        <div
+          className="prj-queue__track"
+          role="img"
+          aria-label={`${requests.length} pending ${
+            requests.length === 1 ? 'request' : 'requests'
+          }, oldest waiting ${oldestLabel}`}
+        >
+          {requests.map((request, index) => (
+            <span
+              key={request._id}
+              className={`prj-queue__tick${index === ages.indexOf(oldest) ? ' is-oldest' : ''}`}
+              style={{ left: `${Math.max(0, Math.min(100, (1 - ages[index] / oldest) * 100))}%` }}
+              title={`${request.studentId?.name || 'Student'} · waiting ${humanAge(ages[index])}`}
+            />
+          ))}
+        </div>
+        <div className="prj-queue__foot">
+          <span>
+            oldest <strong>{oldestLabel}</strong>
+          </span>
+          <span className="prj-queue__axis" aria-hidden="true">
+            now
+          </span>
+        </div>
+      </div>
+
+      <div className="ui-panel__body ui-panel__body--flush">
+        <ul className="prj-join-list">
+          {requests.map((request) => (
+            <li className="prj-join" key={request._id}>
+              <span className="ui-avatar prj-avatar" aria-hidden="true">
+                {initialOf(request.studentId?.name)}
+              </span>
+              <div className="prj-join__main">
+                <p className="prj-join__name">{request.studentId?.name || 'Unknown student'}</p>
+                <p className="prj-join__sub">
+                  {request.studentId?.email && (
+                    <a className="prj-join__mail" href={`mailto:${request.studentId.email}`}>
+                      {request.studentId.email}
+                    </a>
+                  )}
+                  {(request.studentId?.department || request.studentId?.semester) && (
+                    <span className="prj-join__dot" aria-hidden="true">
+                      ·
+                    </span>
+                  )}
+                  {[
+                    request.studentId?.enrollmentNumber
+                      ? `Enrollment ${request.studentId.enrollmentNumber}`
+                      : null,
+                    request.studentId?.department,
+                    request.studentId?.semester ? `Semester ${request.studentId.semester}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </p>
+              </div>
+              <div className="prj-join__meta">
+                <span className="prj-join__age" title={new Date(request.createdAt).toLocaleString()}>
+                  {humanAge(now - new Date(request.createdAt).getTime())}
+                </span>
+                <div className="prj-join__actions">
                   <button
-                    className="btn btn-primary"
-                    style={{ padding: '6px 16px' }}
-                    onClick={() => handleApprove(r._id)}
+                    type="button"
+                    className="ui-btn ui-btn--primary ui-btn--sm"
+                    onClick={() => handleApprove(request._id)}
                   >
                     Approve
                   </button>
                   <button
-                    className="btn btn-outline"
-                    style={{
-                      padding: '6px 16px',
-                      color: 'var(--danger)',
-                      borderColor: 'var(--danger-soft)',
-                      background: 'var(--danger-soft)',
-                    }}
-                    onClick={() => handleReject(r._id)}
+                    type="button"
+                    className="ui-btn ui-btn--danger ui-btn--sm"
+                    onClick={() => handleReject(request._id)}
                   >
                     Reject
                   </button>
                 </div>
               </div>
-            ))}
-          </div>
-        ) : (
-          <div
-            className="empty-state"
-            style={{
-              padding: '24px',
-              border: '1px dashed var(--border)',
-              borderRadius: '12px',
-              background: 'var(--surface)',
-            }}
-          >
-            No pending join requests for this project.
-          </div>
-        )}
+            </li>
+          ))}
+        </ul>
       </div>
-    </div>
+    </section>
   );
 }

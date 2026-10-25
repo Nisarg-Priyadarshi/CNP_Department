@@ -11,14 +11,38 @@ export function isEventPast(value: string | Date | null | undefined, today = new
 
 type EventDateRecord = { eventDate?: string | Date | null; date?: string | Date | null };
 
-/** Split events by local calendar day and keep each group in its existing display order. */
-export function partitionEvents<T extends EventDateRecord>(events: T[]) {
-  const eventTime = (event: T) => new Date((event.eventDate || event.date) as string).getTime();
-  const upcoming = events.filter(event => !isEventPast(event.eventDate || event.date));
-  const past = events.filter(event => isEventPast(event.eventDate || event.date));
+/** Milliseconds, or null when the record carries no usable date. */
+function eventTime(record: EventDateRecord): number | null {
+  const value = record.eventDate || record.date;
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? null : time;
+}
 
-  upcoming.sort((a, b) => eventTime(a) - eventTime(b));
-  past.sort((a, b) => eventTime(b) - eventTime(a));
+/**
+ * Split events by local calendar day.
+ *
+ * An event with no usable date cannot be "upcoming" — there is no day for it to
+ * arrive on — so it lands in the past group and sorts to the end of it, rather
+ * than sitting in Upcoming forever behind a NaN comparator.
+ */
+export function partitionEvents<T extends EventDateRecord>(events: T[]) {
+  const upcoming: T[] = [];
+  const past: T[] = [];
+
+  for (const event of events) {
+    const time = eventTime(event);
+    if (time === null || isEventPast(event.eventDate || event.date)) {
+      past.push(event);
+    } else {
+      upcoming.push(event);
+    }
+  }
+
+  // Dated first, undated last, then chronological in each direction.
+  upcoming.sort((a, b) => (eventTime(a) as number) - (eventTime(b) as number));
+  past.sort((a, b) => (eventTime(b) ?? -Infinity) - (eventTime(a) ?? -Infinity));
+
   return { upcoming, past };
 }
 

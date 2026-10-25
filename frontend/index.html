@@ -3,11 +3,69 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CNP Department — Club Events &amp; Project Management</title>
-    <meta name="description" content="Student Managed Clubs and Projects — Authentication portal for project updates, mentor feedback, club events, and inventory management." />
+
+    <title>CNP Department · Student Managed Clubs and GUIITAR Projects, GSFC University</title>
+    <meta
+      name="description"
+      content="The college platform for Student Managed Clubs and GUIITAR Projects at GSFC University, Vadodara: discover clubs, projects and events, join a team, and track material requests."
+    />
+    <meta name="robots" content="index,follow" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- The theme is a choice, stored per browser, and light is the default. -->
+    <meta name="theme-color" content="#f8f9fc" />
+    <script>
+      (() => {
+        try {
+          if (localStorage.getItem('cnp_theme') === 'dark') {
+            document.documentElement.dataset.theme = 'dark';
+            document.documentElement.style.colorScheme = 'dark';
+            document.querySelector('meta[name="theme-color"]').setAttribute('content', '#101419');
+          }
+        } catch (error) {
+          /* storage unavailable: the light default stands */
+        }
+      })();
+    </script>
+    <meta name="application-name" content="CNP Department" />
+
+    <!-- Icons and install -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="CNP Department" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+    <!-- Sharing -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="CNP Department" />
+    <meta
+      property="og:title"
+      content="CNP Department · Student Managed Clubs and GUIITAR Projects, GSFC University"
+    />
+    <meta
+      property="og:description"
+      content="Student Managed Clubs and GUIITAR Projects at GSFC University, Vadodara: clubs, projects, events and material requests in one place."
+    />
+    <meta property="og:image" content="/screens/dashboard.webp" />
+    <meta property="og:image:alt" content="The CNP Department dashboard: clubs, projects and upcoming events." />
+    <meta property="og:locale" content="en_IN" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="CNP Department · Student Managed Clubs and GUIITAR Projects"
+    />
+    <meta
+      name="twitter:description"
+      content="Clubs, projects and events at GSFC University, Vadodara."
+    />
+    <meta name="twitter:image" content="/screens/dashboard.webp" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400..700&family=IBM+Plex+Sans:wght@400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="preload" as="image" href="/screens/dashboard.webp" />
     <link rel="stylesheet" href="/src/app.css" />
   </head>
   <body>

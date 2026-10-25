@@ -1,0 +1,1375 @@
+/* Hallmark · shape: density calendar + schedule rail · genre: modern-minimal · theme: Cobalt · axes: light/grotesk-sans/cool · posture: instrument */
+/* ═══════════════════════════════════════════════════════════════════════════
+   Events · the calendar is the page
+   The month is a surface: every cell is shaded by how many events it holds,
+   the number key selects, chips are the events themselves. The rail beside it
+   is a schedule instrument (time on a rule, event as a ticket), the agenda is
+   the same rail at full length, the detail is a ticket stub.
+
+   Layout and composition only. Colour, space and type come from tokens.css;
+   keys, panels, rows, tags, fields and modals come from ui.css. Every class in
+   this file is prefixed .evt-.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Area baseline ───────────────────────────────────────────────────────
+   The shell contract applies these to .shell-content. Repeating them at zero
+   specificity keeps the area correct while the page still renders inside the
+   legacy .main-content, and can never override a primitive class. */
+:where(.evt-page, .evt-card) {
+  color: var(--color-ink-2);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+:where(.evt-page) :where(p, h1, h2, h3, dl, dd, figure) {
+  margin: 0;
+  padding: 0;
+}
+:where(.evt-page) :where(h1, h2, h3) {
+  font-family: var(--font-display);
+  font-weight: var(--display-weight);
+  letter-spacing: var(--tracking-display);
+  line-height: 1.1;
+  color: var(--color-ink);
+  text-wrap: balance;
+}
+:where(.evt-page, .evt-card) :where(ul, ol) {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+:where(.evt-page) :where(p) { margin: 0; }
+:where(.evt-page) :where(a) { color: inherit; text-decoration: none; }
+:where(.evt-page) :where(svg) { display: block; }
+
+/* The shell supplies the ring once it lands; this matches it exactly and keeps
+   the legacy shell from falling back to the UA outline. Zero specificity so a
+   primitive's own focus treatment (fields) always wins. */
+:where(.evt-page, .evt-card) :focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Legacy app.css styles bare input/select/textarea elements at a specificity
+   that outranks the .ui-field class, so the two layers would disagree inside
+   the form. Re-assert the primitive's own values for this area only.
+   Remove this block once app.css stops styling bare fields. */
+.evt-page :is(input, select, textarea).ui-field {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 var(--space-sm);
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: var(--radius-input);
+  background: var(--color-sheet);
+  color: var(--color-ink);
+  font: 400 var(--text-sm)/1.4 var(--font-body);
+  box-shadow: none;
+}
+.evt-page :is(input, select, textarea).ui-field:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-wash);
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+.evt-page textarea.ui-field--area {
+  padding: var(--space-xs) var(--space-sm);
+  min-height: 96px;
+}
+.evt-page select.ui-field--select { padding-right: var(--space-xl); }
+.evt-page :is(input, select, textarea).ui-field:disabled {
+  color: var(--color-muted);
+  background: var(--color-paper-2);
+}
+
+/* Legacy `label` sets uppercase tracking that .ui-label never resets. */
+.evt-page .ui-label {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* ── Keys reset ──────────────────────────────────────────────────────────
+   base.css only resets buttons inside .landing, so custom keys here would
+   otherwise keep the UA outset border and its system font. Zero specificity,
+   so every rule below can still compose its own border and background. */
+:where(.evt-page) :where(
+  .evt-chip,
+  .evt-cell__num,
+  .evt-cell__more,
+  .evt-ticket__open,
+  .evt-clubrow,
+  .evt-view button
+) {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* ── Icons ───────────────────────────────────────────────────────────────── */
+
+.evt-i {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.evt-i--sm { width: 14px; height: 14px; }
+.evt-i--xs { width: 1em; height: 1em; }
+.evt-i--lg { width: 20px; height: 20px; }
+
+/* ── Crest: the club mark ────────────────────────────────────────────────── */
+
+.evt-crest {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--evt-crest, 24px);
+  height: var(--evt-crest, 24px);
+  overflow: hidden;
+  background: var(--color-paper-2);
+  color: var(--color-ink-2);
+  box-shadow: inset 0 0 0 1px var(--color-rule-2);
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--space-2xs)) 0,
+    100% var(--space-2xs),
+    100% 100%,
+    0 100%
+  );
+}
+.evt-crest img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.evt-crest__mono {
+  font: var(--display-weight) calc(var(--evt-crest, 24px) * 0.46)/1 var(--font-display);
+  letter-spacing: var(--tracking-display);
+}
+
+/* ── Page head ───────────────────────────────────────────────────────────── */
+
+.evt-page { min-width: 0; }
+
+.evt-page__title { margin: 0; }
+
+/* Real counts, set as an instrument strip: numeral over label, ruled apart. */
+.evt-ledger {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2xs) var(--space-sm);
+  margin-top: var(--space-xs);
+}
+.evt-ledger__cell {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2xs);
+}
+.evt-ledger__cell + .evt-ledger__cell {
+  padding-left: var(--space-sm);
+  border-left: var(--rule-hair) solid var(--color-rule-2);
+}
+.evt-ledger__n {
+  font: var(--display-weight) var(--text-md)/1 var(--font-display);
+  letter-spacing: var(--tracking-display);
+  color: var(--color-ink);
+}
+.evt-ledger__lab {
+  font-size: var(--text-xs);
+  color: var(--color-ink-2);
+}
+
+.evt-select {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 184px;
+}
+.evt-select .ui-field { padding-right: var(--space-xl); }
+.evt-select > svg {
+  position: absolute;
+  right: var(--space-sm);
+  color: var(--color-muted);
+  pointer-events: none;
+}
+
+.evt-view { flex: none; }
+
+/* ── Month composition ───────────────────────────────────────────────────── */
+
+.evt-month {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-lg);
+  align-items: start;
+}
+@media (min-width: 75rem) {
+  .evt-month { grid-template-columns: minmax(0, 8fr) minmax(0, 4fr); }
+  .evt-rail { position: sticky; top: var(--space-md); }
+}
+
+/* The month's club tally spans both columns: the calendar's lower register. */
+.evt-month > .evt-clubs { grid-column: 1 / -1; }
+
+.evt-rail {
+  display: grid;
+  gap: var(--space-lg);
+  align-content: start;
+  min-width: 0;
+}
+
+.evt-cal {
+  overflow: hidden;
+  container-type: inline-size;
+  container-name: evtcal;
+}
+
+.evt-cal__head {
+  flex-wrap: wrap;
+  row-gap: var(--space-xs);
+  background: var(--color-sheet);
+}
+.evt-cal__id {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  min-width: 0;
+}
+.evt-cal__marks {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding-left: var(--space-sm);
+  border-left: var(--rule-hair) solid var(--color-rule);
+}
+.evt-cal__marks-label {
+  font: 500 var(--text-xs)/1 var(--font-body);
+  letter-spacing: 0.01em;
+  color: var(--color-ink-2);
+  white-space: nowrap;
+}
+.evt-cal__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  margin-left: auto;
+}
+
+.evt-cal__scroll { overflow-x: auto; }
+
+/* The month's rhythm: one bar per week, height by event count. Empty weeks
+   keep a visible stub on the baseline so the set reads as a scale, not a lone
+   tick — and the set carries a word ("per week") beside it. */
+.evt-weekbars { display: inline-flex; flex: none; cursor: default; }
+.evt-weekbars__slot { fill: var(--color-paper-3); }
+.evt-weekbars__bar {
+  fill: var(--color-glyph-4);
+  transition: fill var(--dur-short) var(--ease-in-out);
+}
+.evt-weekbars__bar[data-empty] { fill: var(--color-glyph-2); }
+.evt-weekbars__base { stroke: var(--color-rule-2); stroke-width: 1; }
+.evt-weekbars:hover .evt-weekbars__bar:not([data-empty]) { fill: var(--color-ink-2); }
+
+.evt-tipweeks { display: grid; gap: var(--space-3xs); min-width: 9rem; }
+.evt-tipweeks__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-md);
+  font-variant-numeric: tabular-nums;
+}
+.evt-tipweeks__note {
+  margin-top: var(--space-2xs);
+  padding-top: var(--space-2xs);
+  border-top: var(--rule-hair) solid var(--color-graphite-2);
+  color: var(--color-graphite-muted);
+}
+
+/* ── The month surface ───────────────────────────────────────────────────── */
+
+.evt-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+  background: var(--color-paper-2);
+}
+.evt-week > span {
+  padding: var(--space-2xs) var(--space-xs);
+  font: 500 var(--text-xs)/1.4 var(--font-body);
+  color: var(--color-ink-2);
+}
+
+.evt-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.evt-grid:not(.evt-grid--loading) {
+  animation: evt-view var(--dur-short) var(--ease-out) both;
+}
+
+/* A day is a tile on the surface: no vertical rules, only the week bands. The
+   density wash is inset, so the calendar reads as objects on paper rather than
+   a spreadsheet of boxes. Empty days stay short; only real events add height. */
+.evt-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+  min-height: var(--space-2xl);
+  padding: var(--space-2xs) var(--space-2xs) var(--space-xs);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+  background: transparent;
+  isolation: isolate;
+}
+.evt-cell:nth-last-child(-n + 7) { border-bottom: 0; }
+
+/* Density: the day's event count, laid into the cell as shade. Decorative —
+   the count is in the day key's accessible name and in the tick mark. */
+.evt-cell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 0;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    background-color var(--dur-short) var(--ease-in-out),
+    opacity var(--dur-short) var(--ease-in-out),
+    box-shadow var(--dur-short) var(--ease-in-out);
+}
+.evt-cell[data-level='1']::before { background: var(--color-glyph-1); opacity: 0.55; }
+.evt-cell[data-level='2']::before { background: var(--color-glyph-2); opacity: 0.32; }
+.evt-cell[data-level='3']::before { background: var(--color-glyph-3); opacity: 0.14; }
+.evt-cell[data-level='4']::before { background: var(--color-glyph-3); opacity: 0.18; }
+
+/* Hover: a hairline tile appears under the pointer, never a colour claim. */
+.evt-cell::after {
+  content: "";
+  position: absolute;
+  inset: var(--space-3xs);
+  z-index: -1;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px var(--color-rule-2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-short) var(--ease-in-out);
+}
+.evt-cell:hover::after { opacity: 1; }
+
+.evt-cell--blank { pointer-events: none; }
+.evt-cell--blank::after { display: none; }
+
+/* Today keeps a cobalt edge; the day key carries the fill. */
+.evt-cell.is-today::after {
+  opacity: 1;
+  box-shadow: inset 0 0 0 1px var(--color-accent-2);
+}
+
+/* Selection moves focus across the surface rather than swapping a tab. */
+.evt-cell.is-selected::before {
+  background: var(--color-accent-wash);
+  opacity: 1;
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+.evt-cell.is-selected::after { opacity: 0; }
+
+.evt-cell__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3xs);
+  min-height: var(--space-lg);
+}
+
+/* The number key: a die-cut slab, filled only for today. Empty days are quiet
+   but still legible — the date is the first thing you read on the surface. */
+.evt-cell__num {
+  display: inline-grid;
+  place-items: center;
+  min-width: calc(var(--space-lg) - var(--space-3xs));
+  height: calc(var(--space-lg) - var(--space-3xs));
+  padding-inline: var(--space-3xs);
+  border-radius: 4px;
+  font: 600 var(--text-md)/1 var(--font-display);
+  color: var(--color-ink-2);
+  transition:
+    background-color var(--dur-short) var(--ease-in-out),
+    color var(--dur-short) var(--ease-in-out);
+}
+.evt-cell__num:hover { background: var(--color-paper-3); color: var(--color-ink); }
+.evt-cell[data-level] .evt-cell__num { color: var(--color-ink); }
+.evt-cell.is-today .evt-cell__num {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+.evt-cell.is-selected:not(.is-today) .evt-cell__num { color: var(--color-accent-deep); }
+
+.evt-cell__chips {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin-inline: calc(-1 * var(--space-2xs));
+}
+
+/* An event in a day cell: a ruled chip that uses the whole column, title first,
+   the time and venue one hover away. */
+.evt-chip {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0 var(--space-3xs) 0 var(--space-2xs);
+  border-left: 2px solid var(--color-glyph-4);
+  border-radius: 0 3px 3px 0;
+  background: var(--color-sheet);
+  color: var(--color-ink-2);
+  font: 400 var(--text-xs)/1.5 var(--font-body);
+  overflow: hidden;
+  transition:
+    background-color var(--dur-short) var(--ease-in-out),
+    color var(--dur-short) var(--ease-in-out),
+    border-color var(--dur-short) var(--ease-in-out);
+  animation: evt-chip-in var(--dur-short) var(--ease-out) both;
+}
+.evt-chip:nth-child(2) { animation-delay: 40ms; }
+.evt-chip:hover { background: var(--color-paper-2); color: var(--color-ink); }
+.evt-chip.is-past {
+  border-left-color: var(--color-rule-2);
+  color: var(--color-muted);
+}
+.evt-chip.is-past:hover { border-left-color: var(--color-muted); color: var(--color-ink-2); }
+
+.evt-chip__title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* More than two events in a day: one clear, full-width affordance. */
+.evt-cell__more {
+  display: block;
+  width: 100%;
+  padding: 0 var(--space-3xs) 0 var(--space-2xs);
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 0 3px 3px 0;
+  background: transparent;
+  color: var(--color-accent-deep);
+  font: 500 var(--text-xs)/1.6 var(--font-body);
+  text-align: left;
+  transition: background-color var(--dur-short) var(--ease-in-out);
+}
+.evt-cell__more:hover { background: var(--color-accent-wash); }
+
+/* The small surface drops the chips, so the day's count returns as one numeral
+   in the corner of the cell — never a wash with no reading. */
+.evt-cell__n { display: none; }
+
+@keyframes evt-chip-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The smallest surface drops the ruled chips for the count marks: seven days
+   stay visible on a phone instead of pushing the weekend into a scroll. */
+@container evtcal (max-width: 30rem) {
+  .evt-weekbars { display: none; }
+  .evt-cal__marks { display: none; }
+  .evt-cell {
+    min-height: var(--space-2xl);
+    gap: var(--space-3xs);
+    padding: var(--space-xs) var(--space-2xs) var(--space-xs);
+  }
+  .evt-cell__chips { display: none; }
+  .evt-cell__more { display: none; }
+  .evt-cell__n {
+    display: inline-grid;
+    place-items: center;
+    min-width: 16px;
+    height: 16px;
+    padding-inline: var(--space-2xs);
+    border-radius: 3px;
+    background: var(--color-accent-wash);
+    color: var(--color-accent-deep);
+    font: 600 var(--text-xs)/1 var(--font-display);
+    font-variant-numeric: tabular-nums;
+  }
+  .evt-cell__num {
+    min-width: 18px;
+    height: 18px;
+    font-size: var(--text-xs);
+  }
+  .evt-week > span { padding-inline: var(--space-3xs); }
+}
+
+/* ── Rail: the schedule instrument ───────────────────────────────────────── */
+
+.evt-side { min-width: 0; }
+.evt-side__body {
+  --evt-time-col: 4.25rem;
+  animation: evt-fade var(--dur-short) var(--ease-out) both;
+}
+.evt-side__marks {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  flex: none;
+}
+.evt-side__rel {
+  font: 500 var(--text-xs)/1.2 var(--font-body);
+  color: var(--color-accent-deep);
+}
+
+.evt-daygroup { min-width: 0; }
+.evt-daygroup + .evt-daygroup .evt-daynode__plate { padding-top: var(--space-lg); }
+
+/* A day on the rail: its plate sits on the spine, its distance beside it. */
+.evt-daynode {
+  display: grid;
+  grid-template-columns: var(--evt-time-col) minmax(0, 1fr);
+}
+.evt-daynode__plate {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-md) 0 var(--space-xs) var(--space-md);
+  border-left: var(--rule-hair) solid var(--color-rule-2);
+}
+.evt-daynode__tbd {
+  font: 500 var(--text-xs)/1.2 var(--font-body);
+  color: var(--color-muted);
+}
+.evt-daynode__rel {
+  font: 500 var(--text-xs)/1.4 var(--font-body);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+.evt-daynode__count {
+  margin-left: auto;
+  padding-right: var(--space-md);
+  font: 500 var(--text-xs)/1 var(--font-display);
+  color: var(--color-muted);
+}
+
+/* Tickets: time on the rule, event on the right of it. */
+.evt-timeline { min-width: 0; }
+
+.evt-ticket {
+  display: grid;
+  grid-template-columns: var(--evt-time-col) minmax(0, 1fr);
+}
+.evt-ticket__time {
+  padding: var(--space-sm) var(--space-sm) 0 0;
+  text-align: right;
+  font: 500 var(--text-xs)/1.5 var(--font-display);
+  letter-spacing: 0.01em;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+.evt-ticket__body {
+  position: relative;
+  min-width: 0;
+  border-left: var(--rule-hair) solid var(--color-rule-2);
+}
+.evt-ticket__open {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-xs);
+  width: 100%;
+  padding: var(--space-sm) var(--space-md) var(--space-sm) var(--space-sm);
+  transition: background-color var(--dur-short) var(--ease-in-out);
+}
+.evt-ticket__open:hover { background: var(--color-paper-2); }
+.evt-ticket.is-past .evt-ticket__open:hover { background: var(--color-paper-2); }
+
+.evt-ticket__main { min-width: 0; flex: 1; }
+.evt-ticket__title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 var(--text-sm)/1.35 var(--font-display);
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
+  transition: color var(--dur-short) var(--ease-in-out);
+}
+.evt-ticket__open:hover .evt-ticket__title { color: var(--color-accent-deep); }
+.evt-ticket.is-past .evt-ticket__title { color: var(--color-ink-2); }
+
+.evt-ticket__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-2xs);
+  margin-top: 1px;
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--color-muted);
+}
+.evt-ticket__venue {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3xs);
+  min-width: 0;
+  max-width: 100%;
+}
+.evt-ticket__venue + .evt-ticket__club::before {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 2px;
+  margin-right: var(--space-2xs);
+  border-radius: 1px;
+  background: var(--color-rule-2);
+  vertical-align: middle;
+}
+.evt-ticket__club { max-width: 100%; }
+
+/* On a wide agenda the club becomes its own aligned column, so the row uses
+   its width without becoming a table: when | what | who. */
+.evt-ticket__who {
+  display: none;
+  align-self: center;
+  max-width: 11rem;
+  margin-left: auto;
+  padding-left: var(--space-sm);
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+@media (min-width: 64rem) {
+  .evt-agenda .evt-ticket__who { display: block; }
+  .evt-agenda .evt-ticket__club { display: none; }
+}
+
+.evt-ticket__flag {
+  align-self: center;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.evt-ticket__go {
+  align-self: center;
+  color: var(--color-muted);
+  opacity: 0.5;
+  transition:
+    color var(--dur-short) var(--ease-in-out),
+    opacity var(--dur-short) var(--ease-in-out),
+    transform var(--dur-short) var(--ease-out);
+}
+.evt-ticket__open:hover .evt-ticket__go {
+  color: var(--color-accent);
+  opacity: 1;
+  transform: translateX(3px);
+}
+
+.evt-ticket__actions {
+  position: absolute;
+  right: var(--space-xs);
+  top: 50%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3xs);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: opacity var(--dur-short) var(--ease-in-out);
+}
+.evt-ticket:hover .evt-ticket__actions,
+.evt-ticket:focus-within .evt-ticket__actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+.evt-ticket:hover .evt-ticket__go,
+.evt-ticket:focus-within .evt-ticket__go { opacity: 0; }
+.evt-ticket__actions .ui-icon-btn { width: var(--space-lg); height: var(--space-lg); }
+.evt-ticket__actions .ui-icon-btn svg { width: 14px; height: 14px; }
+
+@media (hover: none) {
+  .evt-ticket__actions { position: static; opacity: 1; pointer-events: auto; transform: none; }
+  .evt-ticket__go { display: none; }
+  .evt-ticket__body { display: flex; flex-direction: column-reverse; }
+}
+
+/* ── Clubs in the month: a ranked bar per club ───────────────────────────── */
+
+/* Across a full-width band the clubs sit in columns, separated by hairlines. */
+.evt-clublist {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: var(--rule-hair);
+  background: var(--color-rule);
+}
+.evt-clublist > li { background: var(--color-sheet); min-width: 0; }
+
+.evt-clubrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  width: 100%;
+  height: 100%;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 0;
+  font-size: var(--text-sm);
+  color: var(--color-ink-2);
+  text-align: left;
+  transition:
+    background-color var(--dur-short) var(--ease-in-out),
+    color var(--dur-short) var(--ease-in-out);
+}
+.evt-clublist li:last-child .evt-clubrow { border-bottom: 0; }
+button.evt-clubrow { cursor: pointer; }
+button.evt-clubrow:hover { background: var(--color-paper-2); color: var(--color-ink); }
+button.evt-clubrow[aria-pressed="true"] { background: var(--color-accent-wash); color: var(--color-accent-deep); }
+
+.evt-clubrow__main {
+  display: grid;
+  gap: var(--space-2xs);
+  flex: 1;
+  min-width: 0;
+}
+.evt-clubrow__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.evt-clubrow__bar {
+  display: block;
+  width: 100%;
+  max-width: 22rem;
+  height: 3px;
+  border-radius: 0;
+  background: var(--color-rule-2);
+  overflow: hidden;
+}
+.evt-clubrow__bar::after {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--color-glyph-3);
+  transform: scaleX(var(--evt-f, 0));
+  transform-origin: left center;
+  transition: transform var(--dur-long) var(--ease-out);
+}
+button.evt-clubrow[aria-pressed="true"] .evt-clubrow__bar::after { background: var(--color-accent); }
+
+/* ── Empty states: one line, one action ──────────────────────────────────── */
+
+.evt-side__empty {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-xs);
+  padding: var(--space-lg);
+}
+.evt-side__empty .ui-empty__text { max-width: 32ch; }
+
+.evt-empty {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-xs);
+}
+.evt-empty .ui-empty__text { max-width: 44ch; }
+
+/* ── Agenda: the rail at full length ─────────────────────────────────────── */
+
+.evt-agenda { display: grid; gap: var(--space-lg); }
+@media (min-width: 75rem) {
+  .evt-agenda { grid-template-columns: minmax(0, 8fr) minmax(0, 4fr); align-items: start; }
+  .evt-agenda > .evt-clubs { position: sticky; top: var(--space-md); }
+}
+.evt-agenda__main { display: grid; gap: var(--space-lg); min-width: 0; }
+
+.evt-agenda__body {
+  --evt-time-col: 5rem;
+  animation: evt-fade var(--dur-short) var(--ease-out) both;
+}
+
+.evt-daygroup--agenda .evt-daynode__plate { padding-bottom: var(--space-xs); }
+
+/* Past events: the same rail, kept behind one disclosure. */
+.evt-past {
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: var(--radius-card);
+  background: var(--color-sheet);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.evt-past > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-lg);
+  cursor: pointer;
+  list-style: none;
+  font: 500 var(--text-sm)/1.3 var(--font-display);
+  color: var(--color-ink-2);
+  transition:
+    background-color var(--dur-short) var(--ease-in-out),
+    color var(--dur-short) var(--ease-in-out);
+}
+.evt-past > summary::-webkit-details-marker { display: none; }
+.evt-past > summary::marker { content: ""; }
+.evt-past > summary:hover { background: var(--color-paper-2); color: var(--color-ink); }
+.evt-past[open] > summary { border-bottom: var(--rule-hair) solid var(--color-rule); }
+
+.evt-past__chev {
+  color: var(--color-muted);
+  transition: transform var(--dur-short) var(--ease-out);
+}
+.evt-past[open] .evt-past__chev { transform: rotate(180deg); }
+
+.evt-past__label { margin-right: auto; }
+.evt-past__body {
+  --evt-time-col: 5rem;
+  background: var(--color-sheet);
+  animation: evt-fade var(--dur-short) var(--ease-out) both;
+}
+
+/* ── Portalled overlays ──────────────────────────────────────────────────
+   Modals are rendered into <body> so the scrim covers the shell chrome and
+   the dialog centres on the viewport, not on the content column. The wrapper
+   repeats .evt-page so every scoped primitive (type baseline, field
+   arbitration, focus ring) still reaches the dialog. */
+.evt-portal { position: relative; }
+
+/* ── Event detail: the ticket stub ───────────────────────────────────────── */
+
+.evt-modal__head { align-items: flex-start; }
+
+.evt-modal__id {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+.evt-modal__idtext { min-width: 0; }
+
+.evt-dot {
+  width: 2px;
+  height: 2px;
+  flex: none;
+  border-radius: 1px;
+  background: var(--color-rule-2);
+}
+
+.evt-modal__sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2xs) var(--space-xs);
+  margin-top: var(--space-2xs);
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+
+/* Head and foot stay put; only the body scrolls on short screens. `clip` (not
+   `hidden`) so a focused field can never scroll the head out of the modal.
+   Two classes, because ui.css sets `overflow: auto` on .ui-modal. */
+.ui-modal.evt-modal,
+.ui-modal.evt-form-modal {
+  display: flex;
+  flex-direction: column;
+  overflow: clip;
+}
+.evt-modal > .ui-modal__head,
+.evt-form-modal > .ui-modal__head,
+.evt-modal > .ui-modal__foot { flex: none; }
+.evt-modal > .ui-modal__body { overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+.evt-form { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; overflow: hidden; }
+.evt-form > .ui-modal__body { overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+.evt-form > .ui-modal__foot { flex: none; }
+
+/* Two halves of a ticket: the stub (when, how far) and the body (where, who). */
+.evt-stub {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+}
+.evt-stub__date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  padding-right: var(--space-lg);
+}
+.evt-stub__tbd {
+  display: grid;
+  place-items: center;
+  width: var(--space-2xl);
+  height: var(--space-2xl);
+  font: 500 var(--text-xs)/1 var(--font-body);
+  color: var(--color-muted);
+  background: var(--color-paper-2);
+  box-shadow: inset 0 0 0 1px var(--color-rule-2);
+}
+.evt-stub__time {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3xs);
+  font: 500 var(--text-sm)/1 var(--font-display);
+  color: var(--color-ink-2);
+}
+.evt-stub__body {
+  position: relative;
+  min-width: 0;
+  padding-left: var(--space-lg);
+  border-left: var(--rule-hair) dashed var(--color-rule-2);
+}
+/* The punch holes that make the perforation a ticket edge. */
+.evt-stub__notch {
+  position: absolute;
+  left: calc(var(--space-2xs) * -1 - 1px);
+  width: var(--space-sm);
+  height: var(--space-sm);
+  border-radius: 50%;
+  background: var(--color-sheet);
+}
+.evt-stub__notch--top { top: calc(var(--space-sm) * -1); }
+.evt-stub__notch--bottom { bottom: calc(var(--space-sm) * -1); }
+
+.evt-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+.evt-fact { min-width: 0; }
+.evt-fact dt {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3xs);
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+.evt-fact dd {
+  margin-top: 2px;
+  font-size: var(--text-sm);
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+}
+
+.evt-detail__desc {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: var(--rule-hair) solid var(--color-rule);
+  max-width: 68ch;
+  font-size: var(--text-sm);
+  line-height: 1.65;
+  color: var(--color-ink-2);
+  white-space: pre-line;
+}
+
+.evt-detail__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-top: var(--space-md);
+}
+
+.evt-confirm__text {
+  font-size: var(--text-sm);
+  color: var(--color-ink-2);
+}
+
+/* The relative-day mark: a scale with today at one end and the event at its
+   distance, the day count beside it. Length is where, not how long. */
+.evt-count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--color-ink-2);
+}
+.evt-count__rule { display: block; flex: none; }
+.evt-count__base,
+.evt-count__tick { stroke: var(--color-rule-2); stroke-width: 1; }
+.evt-count__now { stroke: var(--color-ink-2); stroke-width: 1.5; }
+.evt-count__event { stroke: var(--color-glyph-4); stroke-width: 3; }
+.evt-count.is-past .evt-count__event { stroke: var(--color-glyph-3); }
+.evt-count__num {
+  font: 500 var(--text-xs)/1 var(--font-display);
+  color: var(--color-ink-2);
+  white-space: nowrap;
+}
+
+/* ── Form ────────────────────────────────────────────────────────────────── */
+
+.evt-form__body { display: grid; gap: var(--space-md); }
+
+.evt-form__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.evt-form__doc {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-2xs);
+  padding: var(--space-2xs) var(--space-sm);
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: var(--radius-input);
+  background: var(--color-paper-2);
+  font-size: var(--text-xs);
+  color: var(--color-ink-2);
+}
+.evt-form__docname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evt-file {
+  width: 100%;
+  font: 400 var(--text-xs)/1.4 var(--font-body);
+  color: var(--color-muted);
+}
+.evt-file::file-selector-button {
+  margin-right: var(--space-sm);
+  padding: var(--space-2xs) var(--space-sm);
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: 4px;
+  background: var(--color-paper-2);
+  color: var(--color-ink-2);
+  font: 500 var(--text-xs)/1.4 var(--font-body);
+  cursor: pointer;
+  transition: background-color var(--dur-short) var(--ease-in-out);
+}
+.evt-file::file-selector-button:hover { background: var(--color-paper-3); }
+
+/* ── Event card (dashboards, club detail) ────────────────────────────────── */
+
+.evt-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-sheet);
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  transition:
+    border-color var(--dur-short) var(--ease-in-out),
+    background-color var(--dur-short) var(--ease-in-out);
+}
+.evt-card:hover,
+.evt-card:focus-within { border-color: var(--color-accent-2); }
+
+.evt-card::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: var(--radius-card) 0 0 var(--radius-card);
+  background: var(--color-accent);
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform var(--dur-short) var(--ease-out);
+}
+.evt-card:hover::after,
+.evt-card:focus-within::after { transform: scaleY(1); }
+
+.evt-card.is-past { background: var(--color-paper-2); box-shadow: none; }
+
+.evt-card__stub {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3xs);
+  flex: none;
+}
+.evt-card__time {
+  font: 500 var(--text-xs)/1.2 var(--font-display);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+.evt-card__tbd {
+  display: grid;
+  place-items: center;
+  width: var(--space-xl);
+  height: var(--space-xl);
+  font: 500 var(--text-xs)/1 var(--font-body);
+  color: var(--color-muted);
+  background: var(--color-paper-2);
+  box-shadow: inset 0 0 0 1px var(--color-rule-2);
+}
+
+.evt-card__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  min-width: 0;
+}
+
+.evt-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs);
+  min-height: 22px;
+}
+
+.evt-card__club {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+.evt-card__club > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Status yields to the manage actions on hover: the sanctioned reveal. */
+.evt-card__slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+.evt-card__status { transition: opacity var(--dur-short) var(--ease-in-out); }
+.evt-card__actions {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3xs);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: opacity var(--dur-short) var(--ease-in-out);
+}
+.evt-card:hover .evt-card__actions,
+.evt-card:focus-within .evt-card__actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+.evt-card:hover .evt-card__status,
+.evt-card:focus-within .evt-card__status { opacity: 0; }
+
+.evt-card__actions .ui-icon-btn { width: var(--space-lg); height: var(--space-lg); }
+.evt-card__actions .ui-icon-btn svg { width: 14px; height: 14px; }
+.evt-card__actions .ui-icon-btn { color: var(--color-ink-2); }
+.evt-card__actions .ui-icon-btn.is-danger { color: var(--color-negative); }
+
+/* No hover to reveal with: status and actions both stay, stacked. */
+@media (hover: none) {
+  .evt-card__slot {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-3xs);
+  }
+  .evt-card__actions {
+    position: static;
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+}
+
+.evt-card__title {
+  font: 500 var(--text-md)/1.3 var(--font-display);
+  letter-spacing: -0.012em;
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.evt-card.is-past .evt-card__title { color: var(--color-ink-2); }
+
+.evt-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3xs) var(--space-2xs);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--color-muted);
+}
+.evt-card__meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3xs);
+  min-width: 0;
+}
+.evt-card__meta .ui-truncate { max-width: 100%; }
+
+.evt-card__desc {
+  margin-top: var(--space-3xs);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--color-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.evt-card__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs) var(--space-sm);
+  margin-top: var(--space-2xs);
+}
+
+.evt-card__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3xs);
+  max-width: 100%;
+  padding-bottom: 1px;
+  border-bottom: 1px solid transparent;
+  font-size: var(--text-xs);
+  color: var(--color-accent-deep);
+  transition: border-color var(--dur-short) var(--ease-in-out);
+}
+.evt-card__link:hover { border-bottom-color: currentColor; }
+.evt-card__link > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evt-card--compact { padding: var(--space-xs) var(--space-sm); gap: var(--space-xs); }
+.evt-card--compact .evt-card__title { font-size: var(--text-sm); }
+
+/* ── Loading skeleton ────────────────────────────────────────────────────── */
+
+.evt-month--loading { grid-template-columns: minmax(0, 1fr); }
+
+.evt-skel { height: var(--space-sm); }
+.evt-skel--title { width: 8rem; height: var(--space-lg); }
+.evt-skel--sub { width: 16rem; margin-top: var(--space-xs); }
+.evt-skel--bar { width: 10rem; }
+.evt-skel--line { width: 60%; height: var(--space-2xs); }
+.evt-skel-cell {
+  min-height: var(--space-3xl);
+  padding: var(--space-2xs) var(--space-xs);
+  border-right: var(--rule-hair) solid var(--color-rule);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+.evt-skel-cell:nth-child(7n) { border-right: 0; }
+
+/* ── Narrow screens ──────────────────────────────────────────────────────── */
+
+@media (max-width: 48rem) {
+  .evt-select { flex: 1 1 100%; min-width: 0; }
+  .evt-page-actions { width: 100%; }
+  .evt-view { flex: 1 1 auto; }
+  .evt-view button { flex: 1; }
+  .evt-cal__head-right { width: 100%; justify-content: space-between; }
+  .evt-ticket__body { --evt-time-col: 3rem; }
+  .evt-side__body,
+  .evt-agenda__body,
+  .evt-past__body { --evt-time-col: 3.25rem; }
+  .evt-ticket__open { padding-right: var(--space-sm); }
+  .evt-facts { grid-template-columns: minmax(0, 1fr); }
+  .evt-form__grid { grid-template-columns: minmax(0, 1fr); }
+  .evt-ledger { gap: var(--space-2xs) var(--space-sm); }
+  .evt-ledger__cell + .evt-ledger__cell { padding-left: var(--space-sm); }
+  .evt-stub { grid-template-columns: minmax(0, 1fr); }
+  .evt-stub__date {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-md);
+    padding: 0 0 var(--space-md);
+  }
+  .evt-stub__body {
+    padding: var(--space-md) 0 0;
+    border-left: 0;
+    border-top: var(--rule-hair) dashed var(--color-rule-2);
+  }
+  .evt-stub__notch { display: none; }
+}
+
+@media (max-width: 30rem) {
+  .evt-modal .ui-modal__foot,
+  .evt-form-modal .ui-modal__foot {
+    flex-wrap: wrap;
+    row-gap: var(--space-xs);
+  }
+  .evt-confirm__text { flex: 1 1 100%; }
+}
+
+/* Pressed feedback for the keys that are not .ui-btn. */
+:where(.evt-page) :where(
+  .evt-chip,
+  .evt-cell__num,
+  .evt-cell__more,
+  .evt-ticket__open,
+  .evt-clubrow
+):active {
+  background: var(--color-paper-3);
+}
+.evt-past > summary:active { background: var(--color-paper-3); }
+
+/* ── Motion: one entrance choreography, transitions everywhere else ──────── */
+
+.evt-rise {
+  animation: evt-rise var(--dur-short) var(--ease-out) both;
+  animation-delay: calc(var(--evt-i, 0) * 40ms);
+}
+
+@keyframes evt-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes evt-view {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes evt-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Motion floor ────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .evt-page *,
+  .evt-page *::before,
+  .evt-page *::after,
+  .evt-card,
+  .evt-card *,
+  .evt-card *::before,
+  .evt-card *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .evt-rise { animation: none !important; }
+  .evt-cell:hover::after { opacity: 0; }
+}

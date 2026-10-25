@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { api } from '../../services/api';
 
 interface InventoryItem {
@@ -36,9 +36,46 @@ interface MaterialRequestItem {
 interface ProjectMaterialRequestsProps {
   projectId: string;
   isTL?: boolean;
+  /** Lifts the queue counts so the aside can plot approval coverage. */
+  onStatsChange?: (stats: { total: number; approved: number; pending: number }) => void;
 }
 
-export function ProjectMaterialRequests({ projectId, isTL = false }: ProjectMaterialRequestsProps) {
+const STATUS_LABEL: Record<MaterialRequestItem['status'], string> = {
+  pending: 'Pending review',
+  approved: 'Approved',
+  rejected: 'Rejected',
+};
+
+const STATUS_TONE: Record<MaterialRequestItem['status'], string> = {
+  pending: 'is-warning',
+  approved: 'is-positive',
+  rejected: 'is-negative',
+};
+
+const FileMark = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M7 3.5h7l4 4V20.5H7V3.5Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+    <path d="M14 3.5v4h4" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+  </svg>
+);
+
+const ImageMark = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <rect x="3.5" y="5" width="17" height="14" rx="2" stroke="currentColor" strokeWidth="1.7" />
+    <circle cx="9" cy="10" r="1.6" stroke="currentColor" strokeWidth="1.5" />
+    <path d="m5 17 4.5-4.5 3 3L15 13l4 4" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+  </svg>
+);
+
+const CartMark = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M3.5 5.5h2.2l2.2 9.5h10.6l2-7H7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    <circle cx="10" cy="19" r="1.1" fill="currentColor" />
+    <circle cx="17" cy="19" r="1.1" fill="currentColor" />
+  </svg>
+);
+
+export function ProjectMaterialRequests({ projectId, isTL = false, onStatsChange }: ProjectMaterialRequestsProps) {
   const [requests, setRequests] = useState<MaterialRequestItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -59,11 +96,13 @@ export function ProjectMaterialRequests({ projectId, isTL = false }: ProjectMate
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [submitSuccess, setSubmitSuccess] = useState('');
+  const fieldId = useId();
+  const requestTrigger = useRef<HTMLButtonElement>(null);
 
   const fetchRequests = () => {
     api<any>('GET', `/material-requests/project/${projectId}`)
-      .then(res => setRequests(res.data || []))
-      .catch(err => {
+      .then((res) => setRequests(res.data || []))
+      .catch((err) => {
         if (err.status !== 403) setError(err.message || 'Failed to load requests');
       })
       .finally(() => setLoading(false));
@@ -73,16 +112,29 @@ export function ProjectMaterialRequests({ projectId, isTL = false }: ProjectMate
     fetchRequests();
   }, [projectId]);
 
+  useEffect(() => {
+    onStatsChange?.({
+      total: requests.length,
+      approved: requests.filter((request) => request.status === 'approved').length,
+      pending: requests.filter((request) => request.status === 'pending').length,
+    });
+  }, [requests, onStatsChange]);
+
   // Disable background page scrolling when the modal is open
   useEffect(() => {
     if (isModalOpen) {
       const originalOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
+      const onKeyDown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape' && !submitting) closeModal();
+      };
+      document.addEventListener('keydown', onKeyDown);
       return () => {
         document.body.style.overflow = originalOverflow;
+        document.removeEventListener('keydown', onKeyDown);
       };
     }
-  }, [isModalOpen]);
+  }, [isModalOpen, submitting]);
 
   const openModal = async () => {
     setIsModalOpen(true);
@@ -115,6 +167,7 @@ export function ProjectMaterialRequests({ projectId, isTL = false }: ProjectMate
     setImagePreview(null);
     setSubmitError('');
     setSubmitSuccess('');
+    requestTrigger.current?.focus();
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -135,7 +188,7 @@ export function ProjectMaterialRequests({ projectId, isTL = false }: ProjectMate
     setDocumentFile(file || null);
   };
 
-  const selectedItem = inventoryItems.find(i => i._id === selectedItemId);
+  const selectedItem = inventoryItems.find((i) => i._id === selectedItemId);
   const maxAvailable = selectedItem ? selectedItem.availableQuantity : 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -195,544 +248,346 @@ export function ProjectMaterialRequests({ projectId, isTL = false }: ProjectMate
     }
   };
 
-  if (loading) return <div className="spinner"></div>;
+  if (loading) return null;
   if (error) {
     return (
-      <div style={{ color: 'var(--danger)', padding: '16px', background: 'var(--danger-soft)', borderRadius: '8px', border: '1px solid rgba(var(--danger-rgb), 0.2)' }}>
+      <div className="ui-notice ui-notice--error" role="alert">
         {error}
       </div>
     );
   }
 
   return (
-    <div className="card" style={{ marginTop: '24px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h3 className="card-title" style={{ margin: 0 }}>Material Requests</h3>
-          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
-            Track components and materials requested from the central Guitar inventory.
-          </p>
+    <section className="ui-panel prj-requests" id="material-requests" aria-labelledby="prj-requests-title">
+      <header className="ui-panel__head">
+        <div className="ui-panel__titles">
+          <h2 className="ui-panel__title" id="prj-requests-title">
+            Material requests
+          </h2>
+          <span className="ui-panel__meta">{requests.length}</span>
         </div>
-
         {isTL && (
           <button
+            ref={requestTrigger}
             type="button"
-            className="btn btn-primary"
+            className="ui-btn ui-btn--quiet ui-btn--sm"
             onClick={openModal}
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', fontSize: '14px', fontWeight: 600 }}
           >
-            <span style={{ fontSize: '16px' }}>+</span> Request Materials
+            Request materials
           </button>
         )}
-      </div>
+      </header>
 
-      <div className="card-body" style={{ padding: 0 }}>
+      <div className="ui-panel__body ui-panel__body--flush">
         {requests.length ? (
-          <div style={{ display: 'grid', gap: '16px' }}>
-            {requests.map(req => {
-              const statusColors: Record<string, { bg: string; color: string; label: string; icon: string }> = {
-                'pending': { bg: 'rgba(234, 179, 8, 0.15)', color: '#ca8a04', label: 'Pending Review', icon: '⏳' },
-                'approved': { bg: 'rgba(34, 197, 94, 0.15)', color: '#16a34a', label: 'Approved', icon: '✓' },
-                'rejected': { bg: 'rgba(239, 68, 68, 0.15)', color: '#dc2626', label: 'Rejected', icon: '✕' },
-              };
-              const statusStyle = statusColors[req.status] || statusColors['pending'];
-              const materialDisplayName = req.materialName || req.inventoryItemId?.name || 'Guitar Component';
-
+          <ul className="prj-request-list">
+            {requests.map((req) => {
+              const materialDisplayName = req.materialName || req.inventoryItemId?.name || 'Central inventory item';
               return (
-                <div
-                  key={req._id}
-                  style={{
-                    padding: '20px',
-                    border: '1px solid var(--border)',
-                    borderRadius: '12px',
-                    background: 'var(--bg-card-2)',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <h4 style={{ margin: 0, fontSize: '16px', color: 'var(--text)', fontWeight: 600 }}>
-                          {materialDisplayName}
-                        </h4>
-                        <span
-                          style={{
-                            background: '#ffffff',
-                            border: '1px solid var(--border)',
-                            color: 'var(--text)',
-                            borderRadius: '12px',
-                            padding: '2px 10px',
-                            fontSize: '13px',
-                            fontWeight: 600,
-                          }}
-                        >
-                          Qty: {req.quantity}
-                        </span>
-                        {req.inventoryItemId?.category && (
-                          <span className="badge" style={{ fontSize: '11px', background: '#ffffff', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
-                            {req.inventoryItemId.category}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-faint)', marginTop: '4px' }}>
-                        Requested on {new Date(req.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-                      </div>
+                <li className="prj-request" key={req._id}>
+                  <div className="prj-request__main">
+                    <div className="prj-request__title-row">
+                      <p className="prj-request__name">{materialDisplayName}</p>
+                      <span className="prj-request__qty">×{req.quantity}</span>
+                      {req.inventoryItemId?.category && (
+                        <span className="ui-tag ui-tag--plain">{req.inventoryItemId.category}</span>
+                      )}
+                      <span className={`ui-tag ${STATUS_TONE[req.status] || STATUS_TONE.pending}`}>
+                        {STATUS_LABEL[req.status] || 'Pending review'}
+                      </span>
                     </div>
 
-                    <span
-                      className="badge"
-                      style={{
-                        background: statusStyle.bg,
-                        color: statusStyle.color,
-                        padding: '6px 14px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        borderRadius: '20px',
-                      }}
-                    >
-                      <span>{statusStyle.icon}</span> {statusStyle.label}
-                    </span>
+                    {req.reason && <p className="prj-request__reason">{req.reason}</p>}
+                    {req.specifications && (
+                      <p className="prj-request__specs">
+                        <span className="prj-request__label">Specifications</span> {req.specifications}
+                      </p>
+                    )}
+
+                    <p className="prj-request__meta">
+                      Requested{' '}
+                      {new Date(req.createdAt).toLocaleString('en-GB', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                      {req.status !== 'pending' && req.reviewedAt && (
+                        <>
+                          <span aria-hidden="true"> · </span>
+                          Reviewed{' '}
+                          {new Date(req.reviewedAt).toLocaleDateString('en-GB', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                          {req.reviewedBy?.name ? ` by ${req.reviewedBy.name}` : ''}
+                        </>
+                      )}
+                    </p>
+
+                    {req.status === 'rejected' && req.rejectionReason && (
+                      <div className="ui-notice ui-notice--error prj-request__rejection">
+                        <div>
+                          <strong>Rejection reason</strong>
+                          <p>{req.rejectionReason}</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  {req.specifications && (
-                    <div style={{ fontSize: '13px', color: 'var(--text-muted)', background: '#ffffff', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                      <strong style={{ color: 'var(--text)', display: 'block', marginBottom: '2px', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        Specifications & Details:
-                      </strong>
-                      <span style={{ color: 'var(--text)', whiteSpace: 'pre-line' }}>{req.specifications}</span>
-                    </div>
-                  )}
-
-                  <div style={{ fontSize: '14px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                    <strong style={{ color: 'var(--text)', fontSize: '13px' }}>Reason: </strong>
-                    {req.reason}
-                  </div>
-
-                  {/* Attachments Section */}
                   {(req.imageUrl || req.documentUrl) && (
-                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', paddingTop: '4px' }}>
+                    <div className="prj-request__files">
                       {req.imageUrl && (
                         <a
+                          className="prj-file-chip"
                           href={req.imageUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: '6px 12px',
-                            background: '#ffffff',
-                            border: '1px solid var(--border)',
-                            borderRadius: '8px',
-                            color: 'var(--accent)',
-                            textDecoration: 'none',
-                            fontSize: '12px',
-                            fontWeight: 500,
-                          }}
                         >
-                          <img
-                            src={req.imageUrl}
-                            alt="Reference"
-                            style={{ width: '28px', height: '28px', objectFit: 'cover', borderRadius: '4px' }}
-                          />
-                          <span>View Reference Photo</span>
+                          <ImageMark />
+                          Photo
                         </a>
                       )}
-
                       {req.documentUrl && (
                         <a
+                          className="prj-file-chip"
                           href={req.documentUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: '8px 12px',
-                            background: '#ffffff',
-                            border: '1px solid var(--border)',
-                            borderRadius: '8px',
-                            color: 'var(--accent)',
-                            textDecoration: 'none',
-                            fontSize: '12px',
-                            fontWeight: 500,
-                          }}
+                          title={req.documentOriginalName || undefined}
                         >
-                          <span style={{ fontSize: '14px' }}>📄</span>
-                          <span>Reference Document {req.documentOriginalName ? `(${req.documentOriginalName})` : ''}</span>
+                          <FileMark />
+                          Document
                         </a>
                       )}
                     </div>
                   )}
-
-                  {/* Rejection notice */}
-                  {req.status === 'rejected' && req.rejectionReason && (
-                    <div
-                      style={{
-                        padding: '12px 16px',
-                        background: 'rgba(239, 68, 68, 0.08)',
-                        color: 'var(--danger)',
-                        borderRadius: '8px',
-                        border: '1px solid rgba(239, 68, 68, 0.25)',
-                        fontSize: '13px',
-                      }}
-                    >
-                      <strong style={{ display: 'block', marginBottom: '4px', fontSize: '13px' }}>
-                        Rejection Reason:
-                      </strong>
-                      {req.rejectionReason}
-                    </div>
-                  )}
-
-                  {/* Reviewer info */}
-                  {req.status !== 'pending' && req.reviewedAt && (
-                    <div style={{ fontSize: '11px', color: 'var(--text-faint)', borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
-                      Reviewed on {new Date(req.reviewedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-                      {req.reviewedBy?.name ? ` by ${req.reviewedBy.name}` : ''}
-                    </div>
-                  )}
-                </div>
+                </li>
               );
             })}
-          </div>
+          </ul>
         ) : (
-          <div className="empty-state" style={{ padding: '36px 20px' }}>
-            <div style={{ fontSize: '32px', marginBottom: '8px' }}>📦</div>
-            <div style={{ fontWeight: 500, color: 'var(--text)' }}>No material requests yet</div>
-            <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
+          <div className="ui-empty prj-empty prj-empty--inset">
+            <span className="ui-empty__mark">
+              <CartMark />
+            </span>
+            <p className="ui-empty__title">No material requests yet</p>
+            <p className="ui-empty__text">
               {isTL
-                ? 'As Team Leader, you can request hardware and components from Guitar inventory above.'
-                : 'Material requests made by the Team Leader will appear here.'}
-            </div>
+                ? 'Ask central inventory for components; approvals land back here.'
+                : 'Requests raised by the team leader appear here.'}
+            </p>
+            {isTL && (
+              <button type="button" className="ui-btn ui-btn--quiet ui-btn--sm" onClick={openModal}>
+                Request materials
+              </button>
+            )}
           </div>
         )}
       </div>
 
-      {/* Request Materials Modal */}
+      {/* Request materials · team leader */}
       {isModalOpen && (
         <div
-          className="modal-overlay"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closeModal();
+          className="ui-overlay"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeModal();
           }}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="material-modal-title"
         >
           <div
-            className="modal-container"
-            onClick={(e) => e.stopPropagation()}
+            className="ui-modal ui-modal--wide"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`${fieldId}-title`}
           >
-            {/* Stable Header */}
-            <div className="modal-header">
+            <header className="ui-modal__head">
               <div>
-                <h3 id="material-modal-title" style={{ margin: 0, fontSize: '18px', color: 'var(--text)', fontWeight: 600 }}>
-                  Request Materials from Guitar Inventory
-                </h3>
-                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
-                  Direct request to Project Admin for hardware allocation.
-                </p>
+                <h2 className="ui-h2" id={`${fieldId}-title`}>
+                  Request materials
+                </h2>
               </div>
               <button
                 type="button"
+                className="ui-icon-btn"
                 onClick={closeModal}
                 disabled={submitting}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '20px',
-                  color: 'var(--text-muted)',
-                  cursor: 'pointer',
-                  padding: '6px 8px',
-                  borderRadius: '6px',
-                  lineHeight: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-                aria-label="Close modal"
+                aria-label="Close"
               >
-                ✕
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                </svg>
               </button>
-            </div>
+            </header>
 
-            {/* Form wrapping body and stable footer */}
-            <form onSubmit={handleSubmit} className="modal-form">
-              {/* Dedicated Scrollable Body */}
-              <div className="modal-body">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  {submitError && (
-                    <div
-                      style={{
-                        padding: '12px 16px',
-                        borderRadius: '8px',
-                        background: 'var(--danger-soft)',
-                        color: 'var(--danger)',
-                        border: '1px solid rgba(239, 68, 68, 0.25)',
-                        fontSize: '13px',
-                      }}
-                    >
-                      {submitError}
-                    </div>
-                  )}
-
-                  {submitSuccess && (
-                    <div
-                      style={{
-                        padding: '12px 16px',
-                        borderRadius: '8px',
-                        background: 'var(--success-soft)',
-                        color: 'var(--success)',
-                        border: '1px solid rgba(34, 197, 94, 0.25)',
-                        fontSize: '13px',
-                      }}
-                    >
-                      {submitSuccess}
-                    </div>
-                  )}
-
-                  {/* 1. Inventory Item Selector */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text)', marginBottom: '8px' }}>
-                      Select Material from Guitar Inventory <span style={{ color: 'var(--danger)' }}>*</span>
-                    </label>
-                    {loadingInventory ? (
-                      <div style={{ fontSize: '13px', color: 'var(--text-muted)', padding: '10px 0' }}>Loading inventory items...</div>
-                    ) : (
-                      <select
-                        value={selectedItemId}
-                        onChange={(e) => {
-                          setSelectedItemId(e.target.value);
-                          setQuantity(1);
-                        }}
-                        required
-                        style={{
-                          width: '100%',
-                          padding: '11px 14px',
-                          borderRadius: '8px',
-                          background: '#ffffff',
-                          color: 'var(--text)',
-                          border: '1px solid var(--border)',
-                          fontSize: '14px',
-                          outline: 'none',
-                          boxSizing: 'border-box',
-                        }}
-                      >
-                        <option value="" disabled>-- Choose an item --</option>
-                        {inventoryItems.map(item => (
-                          <option key={item._id} value={item._id} disabled={item.availableQuantity <= 0}>
-                            {item.name} {item.category ? `(${item.category})` : ''} — {item.availableQuantity > 0 ? `${item.availableQuantity} available` : 'Out of Stock'}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-
-                    {selectedItem && (
-                      <div
-                        style={{
-                          marginTop: '10px',
-                          padding: '12px 16px',
-                          borderRadius: '10px',
-                          background: '#f8fafc',
-                          border: '1px solid #e2e8f0',
-                          fontSize: '13px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '6px',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontWeight: 600, color: 'var(--text)' }}>Stock Status:</span>
-                            <span
-                              style={{
-                                color: selectedItem.availableQuantity > 0 ? 'var(--success)' : 'var(--danger)',
-                                background: selectedItem.availableQuantity > 0 ? 'var(--success-soft)' : 'var(--danger-soft)',
-                                padding: '2px 8px',
-                                borderRadius: '12px',
-                                fontWeight: 600,
-                                fontSize: '12px',
-                              }}
-                            >
-                              {selectedItem.availableQuantity > 0 ? `${selectedItem.availableQuantity} units available` : 'Out of stock'}
-                            </span>
-                          </div>
-                          {selectedItem.location && (
-                            <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
-                              📍 Location: {selectedItem.location}
-                            </span>
-                          )}
-                        </div>
-                        {selectedItem.description && (
-                          <div style={{ color: 'var(--text-muted)', fontSize: '12px', lineHeight: 1.4 }}>
-                            {selectedItem.description}
-                          </div>
-                        )}
-                      </div>
-                    )}
+            <form onSubmit={handleSubmit}>
+              <div className="ui-modal__body ui-stack">
+                {submitError && (
+                  <div className="ui-notice ui-notice--error" role="alert">
+                    {submitError}
                   </div>
+                )}
+                {submitSuccess && (
+                  <div className="ui-notice prj-notice--ok" role="status">
+                    {submitSuccess}
+                  </div>
+                )}
 
-                  {/* 2. Specifications or Description */}
+                <div>
+                  <label className="ui-label" htmlFor={`${fieldId}-item`}>
+                    Material from central inventory
+                  </label>
+                  {loadingInventory ? (
+                    <span className="ui-skel" style={{ display: 'block', height: 40 }} />
+                  ) : (
+                    <select
+                      id={`${fieldId}-item`}
+                      className="ui-field ui-field--select"
+                      value={selectedItemId}
+                      onChange={(e) => {
+                        setSelectedItemId(e.target.value);
+                        setQuantity(1);
+                      }}
+                      required
+                      disabled={submitting}
+                    >
+                      <option value="" disabled>
+                        Choose an item
+                      </option>
+                      {inventoryItems.map((item) => (
+                        <option key={item._id} value={item._id} disabled={item.availableQuantity <= 0}>
+                          {item.name}
+                          {item.category ? ` (${item.category})` : ''}
+                          {item.availableQuantity > 0
+                            ? ` · ${item.availableQuantity} available`
+                            : ' · Out of stock'}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  {selectedItem && (
+                    <div className="prj-stock">
+                      <div className="prj-stock__top">
+                        <span className={`ui-tag ${selectedItem.availableQuantity > 0 ? 'is-positive' : 'is-negative'}`}>
+                          {selectedItem.availableQuantity > 0
+                            ? `${selectedItem.availableQuantity} units available`
+                            : 'Out of stock'}
+                        </span>
+                        {selectedItem.location && <span className="ui-meta">{selectedItem.location}</span>}
+                      </div>
+                      {selectedItem.description && (
+                        <p className="prj-stock__text">{selectedItem.description}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="ui-form-row ui-form-row--2">
                   <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text)', marginBottom: '8px' }}>
-                      Material Specifications or Description
+                    <label className="ui-label" htmlFor={`${fieldId}-specs`}>
+                      Specifications <span className="prj-label__hint">optional</span>
                     </label>
                     <input
+                      id={`${fieldId}-specs`}
                       type="text"
-                      placeholder="e.g., 5V 2-channel relay module, 16x2 I2C LCD, or required voltage/dimension"
+                      className="ui-field"
+                      placeholder="e.g. 5V 2-channel relay module"
                       value={specifications}
                       onChange={(e) => setSpecifications(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '11px 14px',
-                        borderRadius: '8px',
-                        background: '#ffffff',
-                        color: 'var(--text)',
-                        border: '1px solid var(--border)',
-                        fontSize: '14px',
-                        outline: 'none',
-                        boxSizing: 'border-box',
-                      }}
+                      disabled={submitting}
                     />
                   </div>
-
-                  {/* 3. Requested Quantity */}
                   <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text)', marginBottom: '8px' }}>
-                      Requested Quantity <span style={{ color: 'var(--danger)' }}>*</span>
+                    <label className="ui-label" htmlFor={`${fieldId}-qty`}>
+                      Quantity
                     </label>
                     <input
+                      id={`${fieldId}-qty`}
                       type="number"
+                      className="ui-field"
                       min="1"
                       max={maxAvailable || 1}
                       value={quantity}
                       onChange={(e) => setQuantity(e.target.value === '' ? '' : Math.max(1, Number(e.target.value)))}
                       required
-                      style={{
-                        width: '100%',
-                        padding: '11px 14px',
-                        borderRadius: '8px',
-                        background: '#ffffff',
-                        color: 'var(--text)',
-                        border: '1px solid var(--border)',
-                        fontSize: '14px',
-                        outline: 'none',
-                        boxSizing: 'border-box',
-                      }}
+                      disabled={submitting}
                     />
                     {Number(quantity) > maxAvailable && maxAvailable > 0 && (
-                      <div style={{ fontSize: '12px', color: 'var(--danger)', marginTop: '6px', fontWeight: 500 }}>
-                        ⚠️ Requested quantity exceeds currently available stock of {maxAvailable} units.
-                      </div>
+                      <p className="ui-error">
+                        Requested quantity exceeds the {maxAvailable} units in stock.
+                      </p>
                     )}
                   </div>
+                </div>
 
-                  {/* 4. Reason */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text)', marginBottom: '8px' }}>
-                      Reason or Requirement Explanation <span style={{ color: 'var(--danger)' }}>*</span>
-                    </label>
-                    <textarea
-                      rows={3}
-                      placeholder="Explain why this material is required for the project and which milestone, experiment, or task it supports..."
-                      value={reason}
-                      onChange={(e) => setReason(e.target.value)}
-                      required
-                      style={{
-                        width: '100%',
-                        padding: '11px 14px',
-                        borderRadius: '8px',
-                        background: '#ffffff',
-                        color: 'var(--text)',
-                        border: '1px solid var(--border)',
-                        fontSize: '14px',
-                        outline: 'none',
-                        resize: 'vertical',
-                        lineHeight: 1.5,
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
+                <div>
+                  <label className="ui-label" htmlFor={`${fieldId}-reason`}>
+                    Reason
+                  </label>
+                  <textarea
+                    id={`${fieldId}-reason`}
+                    className="ui-field ui-field--area"
+                    rows={3}
+                    placeholder="What milestone or experiment needs this material?"
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    required
+                    disabled={submitting}
+                  />
+                </div>
 
-                  {/* 5. Reference Document Upload */}
+                <div className="ui-form-row ui-form-row--2">
                   <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text)', marginBottom: '4px' }}>
-                      Reference Document (Optional)
+                    <label className="ui-label" htmlFor={`${fieldId}-doc`}>
+                      Document <span className="prj-label__hint">optional</span>
                     </label>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                      Datasheet, component specification sheet, or circuit schematic (PDF, DOC, DOCX up to 10MB).
-                    </div>
                     <input
+                      id={`${fieldId}-doc`}
                       type="file"
+                      className="prj-file"
                       accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                       onChange={handleDocumentChange}
-                      style={{ fontSize: '13px', color: 'var(--text)', width: '100%' }}
+                      disabled={submitting}
                     />
                     {documentFile && (
-                      <div
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          marginTop: '6px',
-                          padding: '4px 10px',
-                          borderRadius: '6px',
-                          background: '#f1f5f9',
-                          border: '1px solid #cbd5e1',
-                          fontSize: '12px',
-                          color: 'var(--text)',
-                        }}
-                      >
-                        <span>📄 {documentFile.name} ({(documentFile.size / 1024).toFixed(1)} KB)</span>
-                        <button
-                          type="button"
-                          onClick={() => setDocumentFile(null)}
-                          style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
-                          title="Remove file"
-                        >
-                          ✕
+                      <div className="prj-file-chip prj-file-chip--selected">
+                        <FileMark />
+                        <span className="ui-truncate">{documentFile.name}</span>
+                        <span className="ui-meta">{(documentFile.size / 1024).toFixed(1)} KB</span>
+                        <button type="button" className="ui-icon-btn" onClick={() => setDocumentFile(null)} aria-label="Remove document">
+                          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                          </svg>
                         </button>
                       </div>
                     )}
                   </div>
-
-                  {/* 6. Reference Image Upload */}
                   <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text)', marginBottom: '4px' }}>
-                      Reference Component Photo (Optional)
+                    <label className="ui-label" htmlFor={`${fieldId}-photo`}>
+                      Reference photo <span className="prj-label__hint">optional</span>
                     </label>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                      Photo or diagram showing the required hardware component (JPG, PNG, WEBP up to 5MB).
-                    </div>
                     <input
+                      id={`${fieldId}-photo`}
                       type="file"
+                      className="prj-file"
                       accept="image/jpeg,image/png,image/webp"
                       onChange={handleImageChange}
-                      style={{ fontSize: '13px', color: 'var(--text)', width: '100%' }}
+                      disabled={submitting}
                     />
                     {imagePreview && (
-                      <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-                        <img
-                          src={imagePreview}
-                          alt="Component Preview"
-                          style={{ width: '64px', height: '64px', borderRadius: '8px', objectFit: 'cover', border: '1px solid #cbd5e1' }}
-                        />
+                      <div className="prj-attach">
+                        <img src={imagePreview} alt="Component preview" />
                         <button
                           type="button"
-                          className="btn btn-sm btn-outline"
+                          className="ui-btn ui-btn--ghost ui-btn--sm"
                           onClick={() => {
                             setImageFile(null);
                             setImagePreview(null);
                           }}
-                          style={{ fontSize: '12px', padding: '4px 10px' }}
                         >
-                          Remove Photo
+                          Remove
                         </button>
                       </div>
                     )}
@@ -740,30 +595,22 @@ export function ProjectMaterialRequests({ projectId, isTL = false }: ProjectMate
                 </div>
               </div>
 
-              {/* Stable Footer */}
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  onClick={closeModal}
-                  disabled={submitting}
-                  style={{ minWidth: '100px' }}
-                >
+              <footer className="ui-modal__foot">
+                <button type="button" className="ui-btn ui-btn--ghost" onClick={closeModal} disabled={submitting}>
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="btn btn-primary"
-                  disabled={submitting || (Number(quantity) > maxAvailable) || maxAvailable <= 0}
-                  style={{ minWidth: '160px' }}
+                  className="ui-btn ui-btn--primary"
+                  disabled={submitting || Number(quantity) > maxAvailable || maxAvailable <= 0}
                 >
-                  {submitting ? 'Submitting...' : 'Submit Request'}
+                  {submitting ? 'Submitting…' : 'Submit request'}
                 </button>
-              </div>
+              </footer>
             </form>
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }

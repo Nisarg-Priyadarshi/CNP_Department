@@ -1,0 +1,204 @@
+/* Gallery-only layout. Not part of the app bundle. */
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html,
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink-2);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.g {
+  width: 100%;
+  max-width: var(--ui-max);
+  margin-inline: auto;
+  padding: 40px 32px 64px;
+}
+
+.g-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--color-rule-2);
+}
+
+.g-kicker {
+  margin: 0 0 4px;
+  font: 500 11px/1 var(--font-body);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.g-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--text-xl);
+  letter-spacing: var(--tracking-display);
+  color: var(--color-ink);
+}
+
+.g-note {
+  margin: 0;
+  max-width: 40ch;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+
+.g-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: var(--space-md);
+  align-items: start;
+}
+
+.g-wide { grid-column: 1 / -1; }
+
+.g-stack { display: grid; gap: var(--space-md); }
+.g-stack--wide { gap: var(--space-lg); }
+
+.g-stats { margin: 0 0 var(--space-lg); }
+
+.g-rings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-lg);
+}
+
+.g-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.g-line--loose { gap: var(--space-md); }
+
+.g-cap {
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.g-meter-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.g-meter-row > .g-cap { min-width: 4.5ch; text-align: right; }
+
+.g-heat-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-md);
+}
+
+.g-glyphs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-md) var(--space-xs);
+  margin-bottom: var(--space-lg);
+}
+
+.g-glyph {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2xs);
+  padding: var(--space-xs) 0;
+  border: 1px solid var(--color-rule);
+  border-radius: 4px;
+  color: var(--color-ink-2);
+}
+
+.g-glyph span {
+  font-size: 10px;
+  color: var(--color-muted);
+}
+
+.g-glyph-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--color-rule);
+  font-size: var(--text-xs);
+  color: var(--color-ink-2);
+}
+
+.g-canvas {
+  position: relative;
+  overflow: hidden;
+  padding: var(--space-lg);
+  border: 1px solid var(--color-rule-2);
+  border-radius: var(--radius-card);
+  background: var(--color-sheet);
+}
+
+.g-canvas-in {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.g-canvas-text { min-width: 0; }
+
+.g-canvas-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--text-md);
+  color: var(--color-ink);
+}
+
+.g-rows { margin: calc(var(--space-lg) * -1); width: calc(100% + var(--space-lg) * 2); }
+
+.g-row-seg { width: 64px; flex: none; }
+.g-row-meter { width: 56px; flex: none; }
+.g-row-glyph { color: var(--color-muted); }
+
+@media (max-width: 40rem) {
+  .g-rows .ui-row { flex-wrap: wrap; row-gap: var(--space-xs); }
+  .g-rows .ui-row__meta { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+}
+
+.g-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-top: var(--space-lg);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--color-rule-2);
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+@media (max-width: 40rem) {
+  .g { padding: 24px 16px 40px; }
+  .g-glyphs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .g-title { font-size: var(--text-lg); }
+}

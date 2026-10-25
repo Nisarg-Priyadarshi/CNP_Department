@@ -25,40 +25,21 @@ interface StudentProjectCardProps {
   onClick: () => void;
 }
 
-function MentorAvatar({ src, name, size = 34 }: { src?: string | null; name?: string; size?: number }) {
-  const [error, setError] = useState(false);
-  const initial = name
-    ? name.replace(/^Dr\.\s*/i, '').trim().charAt(0).toUpperCase() || name.charAt(0).toUpperCase()
-    : 'M';
-
-  if (src && !error) {
-    return (
-      <img
-        src={src}
-        alt={name || 'Mentor'}
-        onError={() => setError(true)}
-        className="student-card-person-avatar"
-        style={{ width: `${size}px`, height: `${size}px`, minWidth: `${size}px`, minHeight: `${size}px` }}
-      />
-    );
-  }
-
-  return (
-    <div
-      className="student-card-person-avatar student-card-avatar-fallback"
-      style={{
-        width: `${size}px`,
-        height: `${size}px`,
-        minWidth: `${size}px`,
-        minHeight: `${size}px`,
-        fontSize: `${Math.round(size * 0.42)}px`
-      }}
-    >
-      {initial}
-    </div>
-  );
+function initialOf(name?: string): string {
+  return (name || '?').replace(/^Dr\.\s*/i, '').trim().charAt(0).toUpperCase() || '?';
 }
 
+function monogram(name?: string): string {
+  const words = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return '?';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+/**
+ * A project on a dashboard surface: monogram, name, your standing, one line of
+ * description and the mentor who reviews it. The whole tile opens the project.
+ */
 export function StudentProjectCard({ project, currentUserId, onClick }: StudentProjectCardProps) {
   const [imageError, setImageError] = useState(false);
 
@@ -69,15 +50,15 @@ export function StudentProjectCard({ project, currentUserId, onClick }: StudentP
       : project.teamLeaderId;
 
   const isTeamLeader = Boolean(currentUserId && tlId && String(tlId) === String(currentUserId));
-  const positionText = isTeamLeader ? 'Team Leader' : 'Team Member';
+  const positionText = isTeamLeader ? 'Team leader' : 'Team member';
 
   const mentors = project.mentors || [];
-  const hasMentors = mentors.length > 0;
-  const isMultipleMentors = mentors.length > 1;
+  const primaryMentor = mentors.find((m) => m.isPrimary) || mentors[0];
+  const mentor = primaryMentor?.mentorId || null;
 
   return (
     <div
-      className="student-card"
+      className="prj-scard"
       onClick={onClick}
       role="button"
       tabIndex={0}
@@ -88,40 +69,27 @@ export function StudentProjectCard({ project, currentUserId, onClick }: StudentP
         }
       }}
     >
-      {/* Top Header: 84x84 Image on left + Name & Position beneath on right */}
-      <div className="student-card-header">
+      <div className="prj-scard__head">
         {project.image && !imageError ? (
-          <img
-            src={project.image}
-            alt={project.name}
-            onError={() => setImageError(true)}
-            className="student-card-thumb-project"
-          />
+          <span className="prj-scard__mark">
+            <img src={project.image} alt="" onError={() => setImageError(true)} />
+          </span>
         ) : (
-          <div className="student-card-thumb-project student-card-thumb-fallback">
-            📋
-          </div>
+          <span className="prj-scard__mark" aria-hidden="true">
+            {monogram(project.name)}
+          </span>
         )}
 
-        <div className="student-card-title-group">
-          <h3 className="student-card-title" title={project.name}>
+        <div className="prj-scard__titles">
+          <h3 className="prj-scard__title" title={project.name}>
             {project.name}
           </h3>
-          <div className="student-card-badges">
-            <span className={`badge ${isTeamLeader ? 'badge-team-leader' : 'badge-team-member'}`}>
-              <span
-                style={{
-                  width: '6px',
-                  height: '6px',
-                  borderRadius: '50%',
-                  background: 'currentColor',
-                  display: 'inline-block',
-                }}
-              />
+          <div className="prj-scard__tags">
+            <span className={`ui-tag ui-tag--plain prj-scard__standing${isTeamLeader ? ' is-lead' : ''}`}>
               {positionText}
             </span>
             {project.status && (
-              <span className={`badge ${project.status === 'active' ? 'badge-success' : 'badge-student'}`}>
+              <span className={`ui-tag ${project.status === 'active' ? 'is-positive' : 'ui-tag--plain'}`}>
                 {project.status}
               </span>
             )}
@@ -129,57 +97,42 @@ export function StudentProjectCard({ project, currentUserId, onClick }: StudentP
         </div>
       </div>
 
-      {/* Description below heading area */}
-      <p className="student-card-desc" title={project.description}>
-        {project.description || 'No description provided.'}
-      </p>
+      <p className="prj-scard__desc">{project.description || 'No description provided.'}</p>
 
-      {/* Divider */}
-      <div className="student-card-divider">
-        <div className="student-card-footer-label">
-          {isMultipleMentors ? 'Faculty Mentors' : 'Faculty Mentor'}
-        </div>
-
-        {hasMentors ? (
-          <div className="student-card-mentors-list">
-            {mentors.map((m, idx) => {
-              const mentor = typeof m.mentorId === 'object' && m.mentorId !== null ? m.mentorId : null;
-              if (!mentor) return null;
-
-              return (
-                <div key={m._id || idx} className="student-card-person-row">
-                  <MentorAvatar
-                    src={mentor.profileImage}
-                    name={mentor.name}
-                    size={isMultipleMentors ? 32 : 34}
-                  />
-                  <div className="student-card-person-info">
-                    <div className="student-card-person-name" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span title={mentor.name}>{mentor.name}</span>
-                      {m.isPrimary && isMultipleMentors && (
-                        <span className="badge-mentor-primary">Primary</span>
-                      )}
-                    </div>
-                    <div className="student-card-person-dept" title={mentor.department || 'Faculty Mentor'}>
-                      {mentor.department || 'Faculty Mentor'}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+      <div className="prj-scard__foot">
+        <span className="prj-scard__foot-label">
+          {mentors.length > 1 ? 'Faculty mentors' : 'Faculty mentor'}
+        </span>
+        {mentor ? (
+          <span className="prj-scard__mentor">
+            {mentor.profileImage ? (
+              <span className="ui-avatar ui-avatar--sm prj-avatar">
+                <img src={mentor.profileImage} alt="" />
+              </span>
+            ) : (
+              <span className="ui-avatar ui-avatar--sm prj-avatar" aria-hidden="true">
+                {initialOf(mentor.name)}
+              </span>
+            )}
+            <span className="prj-scard__mentor-text">
+              <span className="prj-scard__mentor-name">{mentor.name}</span>
+              <span className="prj-scard__mentor-sub">
+                {mentors.length > 1
+                  ? `${mentor.department || 'Faculty'} · ${mentors.length} mentors`
+                  : mentor.department || 'Faculty mentor'}
+              </span>
+            </span>
+          </span>
         ) : (
-          <div className="student-card-person-row">
-            <div className="student-card-person-avatar student-card-avatar-fallback" style={{ opacity: 0.6 }}>
-              —
-            </div>
-            <div className="student-card-person-info">
-              <div className="student-card-person-name" style={{ color: 'var(--text-faint)' }}>
-                Not Assigned
-              </div>
-              <div className="student-card-person-dept">Assigned Mentor</div>
-            </div>
-          </div>
+          <span className="prj-scard__mentor">
+            <span className="ui-avatar ui-avatar--sm prj-avatar is-empty" aria-hidden="true">
+              ?
+            </span>
+            <span className="prj-scard__mentor-text">
+              <span className="prj-scard__mentor-name is-muted">Not assigned</span>
+              <span className="prj-scard__mentor-sub">Faculty mentor</span>
+            </span>
+          </span>
         )}
       </div>
     </div>

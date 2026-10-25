@@ -17,10 +17,23 @@ export class ApiError extends Error {
   }
 }
 
+/** A 401 from these is an answer about credentials, not an expired session. */
+function isCredentialEndpoint(endpoint: string): boolean {
+  return endpoint.startsWith('/auth/login') || endpoint.startsWith('/auth/register');
+}
+
+/**
+ * Signals that the session is over. AuthProvider listens and drops the user;
+ * the token is already gone, so nothing in flight can resurrect the session.
+ */
+export const UNAUTHORIZED_EVENT = 'cnp:unauthorized';
+
 export async function api<T>(method: string, endpoint: string, body?: any): Promise<T> {
   const headers: Record<string, string> = {};
+  const hasBody = body !== undefined && body !== null;
 
-  if (!(body instanceof FormData)) {
+  // A bodyless request is a simple request: no content type, no preflight.
+  if (hasBody && !(body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
   }
 
@@ -48,6 +61,17 @@ export async function api<T>(method: string, endpoint: string, body?: any): Prom
   }
 
   if (!response.ok) {
+    // An expired session should not linger as a ghost token that makes every
+    // later request fail silently. Drop it and let the shell react.
+    if (response.status === 401 && !isCredentialEndpoint(endpoint) && getStoredToken()) {
+      localStorage.removeItem('cnp_auth_token');
+      try {
+        window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+      } catch {
+        /* non-browser environment */
+      }
+    }
+
     const defaultMsg =
       response.status === 401
         ? 'Authentication required'

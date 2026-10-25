@@ -2,6 +2,29 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, isProfileComplete } from '../../context/AuthContext';
 import { api } from '../../services/api';
+import { AuthStory, type AuthSlide } from './AuthStory';
+import './auth.css';
+
+const SLIDES: AuthSlide[] = [
+  {
+    eyebrow: <>Student clubs <span className="auth-eyebrow__sep" aria-hidden="true">/</span> GUIITAR projects</>,
+    title: <>Your campus work,<br />connected.</>,
+    body: 'Access student-managed clubs and GUIITAR projects through one college platform.',
+    foot: 'For authorized students, faculty, and college officials',
+  },
+  {
+    eyebrow: 'Student managed clubs',
+    title: <>Find your people.<br />Build your community.</>,
+    body: 'Discover student clubs, connect with members, and explore opportunities to participate in campus activities.',
+    foot: 'Student communities. Shared interests. Real connections.',
+  },
+  {
+    eyebrow: 'GUIITAR projects',
+    title: <>Ideas into<br />real-world projects.</>,
+    body: 'Explore student-built projects, discover creative work, and connect with the innovation happening across campus.',
+    foot: 'Built by students. Driven by ideas.',
+  },
+];
 
 export default function Login() {
   const { login } = useAuth();
@@ -71,133 +94,36 @@ export default function Login() {
   };
 
   return (
-    <main className="login-page">
-      <section className="login-shell" aria-label="CNP Department sign in">
-        <div
-          className="login-story"
-          onMouseEnter={() => setIsStoryHovered(true)}
-          onMouseLeave={() => setIsStoryHovered(false)}
-        >
-          <div className="login-brand">
-            <span className="login-brand-mark" aria-hidden="true">
-              <svg viewBox="0 0 28 28" fill="none">
-                <path d="M5 21.5V10.8L14 5l9 5.8v10.7h-6.1v-7h-5.8v7H5Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
-                <path d="M10 10.6h.1M18 10.6h.1" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
-              </svg>
-            </span>
-            <span>CNP Department</span>
-          </div>
+    <main className="auth-gate">
+      <section className="auth-shell" aria-label="CNP Department sign in">
+        <AuthStory
+          slides={SLIDES}
+          active={activeSlide}
+          onSelect={setActiveSlide}
+          onHoverChange={setIsStoryHovered}
+        />
 
-          <div className="login-story-copy" aria-live="off">
-            <div key={activeSlide} className="login-slide-copy">
-              {activeSlide === 0 ? (
-                <>
-                  <p className="login-eyebrow">Student Clubs <span aria-hidden="true">·</span> GUIITAR Projects</p>
-                  <h1>Your campus work,<br />connected.</h1>
-                  <p className="login-story-description">Access student-managed clubs and GUIITAR projects through one college platform.</p>
-                </>
-              ) : activeSlide === 1 ? (
-                <>
-                  <p className="login-eyebrow">Student Managed Clubs</p>
-                  <h1>Find your people.<br />Build your community.</h1>
-                  <p className="login-story-description">Discover student clubs, connect with members, and explore opportunities to participate in campus activities.</p>
-                </>
-              ) : (
-                <>
-                  <p className="login-eyebrow">GUIITAR Projects</p>
-                  <h1>Ideas into<br />real-world projects.</h1>
-                  <p className="login-story-description">Explore student-built projects, discover creative work, and connect with the innovation happening across campus.</p>
-                </>
-              )}
-            </div>
-          </div>
+        <div className="auth-panel">
+          <div className="auth-panel__inner">
+            <header className="auth-head">
+              <h2 className="auth-head__title">Welcome back</h2>
+              <p className="auth-head__sub">Sign in with your authorized college account.</p>
+            </header>
 
-          <div className="campus-illustration" aria-hidden="true">
-            {activeSlide === 0 ? (
-              <>
-                <div className="illustration-orbit illustration-orbit-one" />
-                <div className="illustration-orbit illustration-orbit-two" />
-                <div className="illustration-note illustration-note-club">
-                  <span className="note-icon note-icon-club"><svg viewBox="0 0 24 24" fill="none"><path d="M12 12.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM5.8 19.2c.5-2.5 2.8-4.2 6.2-4.2s5.7 1.7 6.2 4.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg></span>
-                  <span><strong>Student clubs</strong><small>Ideas take shape together</small></span>
-                </div>
-                <div className="illustration-note illustration-note-project">
-                  <span className="note-icon note-icon-project"><svg viewBox="0 0 24 24" fill="none"><path d="m8.5 8-4 4 4 4m7-8 4 4-4 4m-2.2-10-2.6 12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
-                  <span><strong>GUIITAR projects</strong><small>Built by the campus community</small></span>
-                </div>
-                <div className="illustration-campus">
-                  <div className="campus-sun" />
-                  <div className="campus-building">
-                    <div className="building-roof" />
-                    <div className="building-top"><span /><span /><span /></div>
-                    <div className="building-columns"><i /><i /><i /><i /><i /></div>
-                    <div className="building-steps" />
-                  </div>
-                  <div className="campus-ground" />
-                  <span className="campus-spark campus-spark-one">✳</span>
-                  <span className="campus-spark campus-spark-two">✦</span>
-                </div>
-              </>
-            ) : activeSlide === 1 ? (
-              <div className="community-illustration">
-                <div className="community-links" />
-                <span className="community-node node-one">✦</span>
-                <span className="community-node node-two">◉</span>
-                <span className="community-node node-three">✳</span>
-                <span className="community-node node-four">◌</span>
-                <div className="community-card community-card-one"><span>CREATIVE</span><i /><i /><i /></div>
-                <div className="community-card community-card-two"><span>COMMUNITY</span><i /><i /><i /></div>
-              </div>
-            ) : (
-              <div className="project-illustration">
-                <div className="project-grid" />
-                <div className="project-code-card"><span /><span /><span /><i /><i /><i /><i /></div>
-                <div className="project-node project-node-one" /><div className="project-node project-node-two" /><div className="project-node project-node-three" />
-                <div className="project-link project-link-one" /><div className="project-link project-link-two" />
-                <div className="project-chip">IDEA <b>→</b> IMPACT</div>
-              </div>
-            )}
-          </div>
+            {error && <div className="auth-alert" id="login-error" role="alert">{error}</div>}
 
-          <div className="login-story-footer">
-            <p>{activeSlide === 0 ? 'For authorized students, faculty, and college officials' : activeSlide === 1 ? 'Student communities. Shared interests. Real connections.' : 'Built by students. Driven by ideas.'}</p>
-            <div className="login-slide-indicators" role="group" aria-label="Choose information slide">
-              {[0, 1, 2].map(index => (
-                <button
-                  key={index}
-                  type="button"
-                  className={index === activeSlide ? 'active' : ''}
-                  onClick={() => setActiveSlide(index)}
-                  aria-label={`Show slide ${index + 1}`}
-                  aria-pressed={index === activeSlide}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="login-form-side">
-          <div className="login-form-wrap">
-            <div className="login-mobile-brand">
-              <span className="login-brand-mark" aria-hidden="true"><svg viewBox="0 0 28 28" fill="none"><path d="M5 21.5V10.8L14 5l9 5.8v10.7h-6.1v-7h-5.8v7H5Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /></svg></span>
-              <span>CNP Department</span>
-            </div>
-            <div className="login-form-heading">
-              <p className="login-form-kicker">College community access</p>
-              <h2>Welcome back</h2>
-              <p>Sign in with your authorized college account.</p>
-            </div>
-
-            {error && <div className="login-error" id="login-error" role="alert">{error}</div>}
-
-            <form className="login-form" onSubmit={handleSubmit} noValidate>
-              <div className="login-field">
-                <label htmlFor="login-email">College email</label>
-                <div className="login-input-wrap">
-                  <svg className="login-input-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" /><path d="m3.5 5 6.5 5 6.5-5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>
+            <form className="auth-form" onSubmit={handleSubmit} noValidate>
+              <div className="auth-line">
+                <label className="ui-label" htmlFor="login-email">College email</label>
+                <div className="auth-input">
+                  <svg className="auth-input__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                    <path d="M4 6h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Z" stroke="currentColor" strokeWidth="1.6" />
+                    <path d="m4.4 7.2 7.6 6 7.6-6" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                  </svg>
                   <input
                     id="login-email"
                     name="email"
+                    className="ui-field auth-input__field"
                     type="email"
                     autoComplete="username"
                     inputMode="email"
@@ -212,13 +138,18 @@ export default function Login() {
                 </div>
               </div>
 
-              <div className="login-field">
-                <label htmlFor="login-password">Password</label>
-                <div className="login-input-wrap">
-                  <svg className="login-input-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3.5" y="8.5" width="13" height="9" rx="2" stroke="currentColor" strokeWidth="1.5" /><path d="M6.5 8.5V6a3.5 3.5 0 0 1 7 0v2.5M10 12v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+              <div className="auth-line">
+                <label className="ui-label" htmlFor="login-password">Password</label>
+                <div className="auth-input auth-input--action">
+                  <svg className="auth-input__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                    <path d="M7.5 11V8a4.5 4.5 0 0 1 9 0v3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                    <rect x="4.5" y="11" width="15" height="9.5" rx="2" stroke="currentColor" strokeWidth="1.6" />
+                    <path d="M12 14.6v2.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                  </svg>
                   <input
                     id="login-password"
                     name="password"
+                    className="ui-field auth-input__field"
                     type={showPassword ? 'text' : 'password'}
                     autoComplete="current-password"
                     placeholder="Enter your password"
@@ -230,7 +161,7 @@ export default function Login() {
                     aria-describedby={error ? 'login-error' : undefined}
                   />
                   <button
-                    className="login-password-toggle"
+                    className="auth-reveal"
                     type="button"
                     onClick={() => setShowPassword(visible => !visible)}
                     disabled={loading}
@@ -238,21 +169,45 @@ export default function Login() {
                     aria-pressed={showPassword}
                   >
                     {showPassword ? (
-                      <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M2.2 10s2.7-5 7.8-5 7.8 5 7.8 5-2.7 5-7.8 5-7.8-5-7.8-5Z" stroke="currentColor" strokeWidth="1.5" /><circle cx="10" cy="10" r="2.2" stroke="currentColor" strokeWidth="1.5" /><path d="m4 4 12 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                        <path d="M2.6 12S6.2 6.4 12 6.4 21.4 12 21.4 12 17.8 17.6 12 17.6 2.6 12 2.6 12Z" stroke="currentColor" strokeWidth="1.6" />
+                        <circle cx="12" cy="12" r="2.7" stroke="currentColor" strokeWidth="1.6" />
+                        <path d="m4.5 4.5 15 15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                      </svg>
                     ) : (
-                      <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M2.2 10s2.7-5 7.8-5 7.8 5 7.8 5-2.7 5-7.8 5-7.8-5-7.8-5Z" stroke="currentColor" strokeWidth="1.5" /><circle cx="10" cy="10" r="2.2" stroke="currentColor" strokeWidth="1.5" /></svg>
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                        <path d="M2.6 12S6.2 6.4 12 6.4 21.4 12 21.4 12 17.8 17.6 12 17.6 2.6 12 2.6 12Z" stroke="currentColor" strokeWidth="1.6" />
+                        <circle cx="12" cy="12" r="2.7" stroke="currentColor" strokeWidth="1.6" />
+                      </svg>
                     )}
                   </button>
                 </div>
               </div>
 
-              <button className="login-submit" type="submit" disabled={loading}>
-                {loading ? <><span className="login-spinner" aria-hidden="true" />Signing in…</> : <>Sign in <span aria-hidden="true">→</span></>}
+              <button className="ui-btn ui-btn--primary ui-btn--lg ui-btn--block auth-go" type="submit" disabled={loading}>
+                {loading ? (
+                  <><span className="auth-spinner" aria-hidden="true" />Signing in…</>
+                ) : (
+                  <>Sign in <span className="auth-go__arrow" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" focusable="false">
+                      <path d="M5 12h13m-5-5 5 5-5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span></>
+                )}
               </button>
-              <p className="login-form-note"><span className="login-secure-mark" aria-hidden="true">✓</span> Access is limited to authorized college accounts</p>
+
+              <p className="auth-note">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                  <path d="M12 3.6 19 6v6c0 4.1-3 6.7-7 8.4-4-1.7-7-4.3-7-8.4V6l7-2.4Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                </svg>
+                Access is limited to authorized college accounts
+              </p>
             </form>
           </div>
-          <p className="login-legal">CNP Department <span aria-hidden="true">·</span> Student Managed Clubs &amp; GUIITAR</p>
+
+          <p className="auth-foot-line">
+            CNP Department <span aria-hidden="true">·</span> Student managed clubs &amp; GUIITAR
+          </p>
         </div>
       </section>
     </main>

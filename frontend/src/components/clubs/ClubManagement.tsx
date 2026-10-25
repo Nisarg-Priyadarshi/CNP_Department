@@ -1,13 +1,72 @@
 import { useState, useEffect, useRef } from 'react';
 import { api, API_URL, getStoredToken } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { UserDisplay } from '../UserDisplay';
 import { UserSelect } from '../UserSelect';
+import '../../pages/Clubs/clubs.css';
 
+type Modal = null | 'requests' | 'edit' | 'member' | 'coordinator' | 'images';
+
+const CloseIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+  </svg>
+);
+
+const ImageIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <rect x="3.5" y="5" width="17" height="14" rx="2.5" stroke="currentColor" strokeWidth="1.7" />
+    <circle cx="9" cy="10" r="1.6" stroke="currentColor" strokeWidth="1.7" />
+    <path d="m5 17 4.5-4.2 3 2.6 3-3.4L20 17" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const UserPlusIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <circle cx="9.5" cy="8" r="3.3" stroke="currentColor" strokeWidth="1.7" />
+    <path d="M3.5 19.5c.6-3.2 3-5 6-5s5.4 1.8 6 5M18 8.5v6M15 11.5h6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+  </svg>
+);
+
+const EditIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M4 20h4L20 8l-4-4L4 16v4Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+    <path d="m14 6 4 4" stroke="currentColor" strokeWidth="1.7" />
+  </svg>
+);
+
+const BadgeIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <circle cx="12" cy="9.5" r="4" stroke="currentColor" strokeWidth="1.7" />
+    <path d="M9.5 13.2 8 21l4-2 4 2-1.5-7.8" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+  </svg>
+);
+
+const InboxIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M3.4 12.6h4.3l1.6 2.8h5.4l1.6-2.8h4.3V20H3.4Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+    <path d="M6.4 12.6V4.4h11.2v8.2" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="m5 12.5 4.5 4.5L19 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+function initials(name?: string) {
+  if (!name) return '?';
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
+}
+
+/**
+ * The club's whole administration, as one toolbar. Every capability lives behind
+ * a key that opens a modal — no panels around the instrument.
+ */
 export function ClubManagement({ club, onUpdate }: { club: any, onUpdate: () => void }) {
   const clubId = club._id;
   const { user } = useAuth();
-  
+
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [existingMembers, setExistingMembers] = useState<any[]>([]);
@@ -16,26 +75,37 @@ export function ClubManagement({ club, onUpdate }: { club: any, onUpdate: () => 
   const [addPosition, setAddPosition] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [modal, setModal] = useState<Modal>(null);
+  const [saving, setSaving] = useState(false);
+  const [assigning, setAssigning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const coverImageInputRef = useRef<HTMLInputElement>(null);
 
   // Edit states
   const [editName, setEditName] = useState(club.name);
   const [editDescription, setEditDescription] = useState(club.description);
-  
+
   // Coordinator states
-  const currentCoordinatorId = typeof club.facultyCoordinatorId === 'object' 
-    ? club.facultyCoordinatorId?._id || '' 
+  const currentCoordinatorId = typeof club.facultyCoordinatorId === 'object'
+    ? club.facultyCoordinatorId?._id || ''
     : club.facultyCoordinatorId || '';
   const [selectedCoordinatorId, setSelectedCoordinatorId] = useState(currentCoordinatorId);
-  const [updatingCoordinator, setUpdatingCoordinator] = useState(false);
 
   useEffect(() => {
-    const cid = typeof club.facultyCoordinatorId === 'object' 
-      ? club.facultyCoordinatorId?._id || '' 
+    const cid = typeof club.facultyCoordinatorId === 'object'
+      ? club.facultyCoordinatorId?._id || ''
       : club.facultyCoordinatorId || '';
     setSelectedCoordinatorId(cid);
   }, [club.facultyCoordinatorId]);
+
+  useEffect(() => {
+    if (!modal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setModal(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [modal]);
 
   const loadRequests = async () => {
     try {
@@ -63,28 +133,30 @@ export function ClubManagement({ club, onUpdate }: { club: any, onUpdate: () => 
   }, [clubId, user]);
 
   const handleUpdateDetails = async () => {
-    setLoading(true);
+    setSaving(true);
     try {
       await api('PATCH', `/clubs/${clubId}`, { name: editName, description: editDescription });
+      setModal(null);
       onUpdate();
       alert('Club details updated successfully');
     } catch (e: any) {
       alert(e.message || 'Failed to update details');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
   const handleAssignCoordinator = async () => {
-    setUpdatingCoordinator(true);
+    setAssigning(true);
     try {
       await api('PATCH', `/clubs/${clubId}/coordinator`, { facultyCoordinatorId: selectedCoordinatorId || null });
+      setModal(null);
       onUpdate();
       alert('Coordinator updated successfully');
     } catch (e: any) {
       alert(e.message || 'Failed to update coordinator');
     } finally {
-      setUpdatingCoordinator(false);
+      setAssigning(false);
     }
   };
 
@@ -113,8 +185,9 @@ export function ClubManagement({ club, onUpdate }: { club: any, onUpdate: () => 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!addStudentId) return alert('Please select a student');
-    
+
     try {
+      setSaving(true);
       await api('POST', `/clubs/${clubId}/members`, {
         studentId: addStudentId,
         membershipType: addMembershipType,
@@ -126,8 +199,11 @@ export function ClubManagement({ club, onUpdate }: { club: any, onUpdate: () => 
       setAddMembershipType('member');
       loadMembers();
       onUpdate();
+      setModal(null);
     } catch (e: any) {
       alert(e.message || 'Failed to add member');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -149,7 +225,7 @@ export function ClubManagement({ club, onUpdate }: { club: any, onUpdate: () => 
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to upload logo');
-      
+
       alert('Logo updated successfully');
       window.location.reload(); // Refresh to show new logo everywhere
     } catch (error: any) {
@@ -178,7 +254,7 @@ export function ClubManagement({ club, onUpdate }: { club: any, onUpdate: () => 
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to upload cover image');
-      
+
       alert('Cover image updated successfully');
       window.location.reload(); // Refresh to show new cover everywhere
     } catch (error: any) {
@@ -189,219 +265,340 @@ export function ClubManagement({ club, onUpdate }: { club: any, onUpdate: () => 
     }
   };
 
-  if (loading) return <div className="spinner"></div>;
-
-  const existingMemberIds = existingMembers.map((m: any) => 
+  const existingMemberIds = existingMembers.map((m: any) =>
     typeof m.studentId === 'object' ? m.studentId?._id : m.studentId
   ).filter(Boolean);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '24px' }}>
-      <div className="card" id="join-requests">
-        <h3 className="card-title" style={{ marginBottom: '16px' }}>Pending Join Requests</h3>
-        <div className="card-body" style={{ padding: 0 }}>
-          {requests.length ? (
-            <div style={{ display: 'grid', gap: '12px' }}>
-              {requests.map(r => (
-                <div key={r._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid var(--border)', padding: '16px', borderRadius: '12px', background: 'var(--bg-card-2)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'var(--warn-soft)', color: 'var(--warn)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '16px' }}>
-                      {(r.studentId?.name || '?').charAt(0)}
-                    </div>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontWeight: 600, color: 'var(--text)', fontSize: '15px' }}>{r.studentId?.name || 'Unknown Student'}</span>
-                        <span className="badge badge-warning" style={{ fontSize: '11px', padding: '2px 8px', background: 'var(--warn-soft)', color: 'var(--warn)' }}>Pending</span>
-                      </div>
-                      <div style={{ fontSize: '13px', marginTop: '2px' }}>
-                        <a href={`mailto:${r.studentId?.email}`} style={{ color: 'var(--primary)', textDecoration: 'none' }}>{r.studentId?.email}</a>
-                        {(r.studentId?.department || r.studentId?.semester || r.studentId?.enrollmentNumber) && (
-                          <span style={{ color: 'var(--text-faint)' }}>
-                            {' • '}
-                            {r.studentId?.enrollmentNumber && <span>Enrollment: {r.studentId.enrollmentNumber} • </span>}
-                            {r.studentId?.department}
-                            {r.studentId?.department && r.studentId?.semester ? ', ' : ''}
-                            {r.studentId?.semester ? `Semester ${r.studentId.semester}` : ''}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-faint)', marginTop: '4px' }}>
-                        Requested: {new Date(r.createdAt).toLocaleString()}
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button className="btn btn-primary" style={{ padding: '6px 16px' }} onClick={() => handleApprove(r._id)}>Approve</button>
-                    <button className="btn btn-outline" style={{ padding: '6px 16px', color: 'var(--danger)', borderColor: 'var(--danger-soft)', background: 'var(--danger-soft)' }} onClick={() => handleReject(r._id)}>Reject</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : <div className="empty-state" style={{ padding: '32px', border: '1px dashed var(--border)', borderRadius: '12px', background: 'var(--surface)' }}>No pending join requests.</div>}
-        </div>
+    <>
+      <div className="clubs-toolbar" role="toolbar" aria-label="Manage this club">
+        <button
+          type="button"
+          className={`ui-btn ui-btn--quiet ui-btn--sm clubs-toolbar__requests${requests.length ? ' is-waiting' : ''}`}
+          onClick={() => setModal('requests')}
+        >
+          <InboxIcon />
+          Requests
+          <span className={`ui-count${requests.length ? ' ui-count--accent' : ''}`}>
+            {loading ? '·' : requests.length}
+          </span>
+        </button>
+
+        <span className="clubs-toolbar__sep" aria-hidden="true" />
+
+        {user?.role === 'club_admin' && (
+          <button type="button" className="ui-btn ui-btn--quiet ui-btn--sm" onClick={() => setModal('edit')}>
+            <EditIcon />
+            Edit
+          </button>
+        )}
+        <button type="button" className="ui-btn ui-btn--quiet ui-btn--sm" onClick={() => setModal('member')}>
+          <UserPlusIcon />
+          Add member
+        </button>
+        {user?.role === 'club_admin' && (
+          <button type="button" className="ui-btn ui-btn--quiet ui-btn--sm" onClick={() => setModal('coordinator')}>
+            <BadgeIcon />
+            Coordinator
+          </button>
+        )}
+        <button type="button" className="ui-btn ui-btn--quiet ui-btn--sm" onClick={() => setModal('images')}>
+          <ImageIcon />
+          Images
+        </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px' }}>
-        <div className="card">
-          <h3 className="card-title" style={{ marginBottom: '16px' }}>Add Member Manually</h3>
-          <div className="card-body" style={{ padding: 0 }}>
-            <form onSubmit={handleAddMember} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: 'var(--text-muted)', fontSize: '13px' }}>
-                  Select Student
-                </label>
-                <UserSelect
-                  role="student"
-                  value={addStudentId}
-                  onChange={setAddStudentId}
-                  placeholder="Search and select student..."
-                  disabledUserIds={existingMemberIds}
-                  disabledReason="Already a member"
-                />
+      {modal === 'requests' && (
+        <div className="ui-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setModal(null); }}>
+          <div className="ui-modal" role="dialog" aria-modal="true" aria-labelledby="clubs-requests-title">
+            <div className="ui-modal__head">
+              <div className="ui-panel__titles">
+                <h2 id="clubs-requests-title" className="ui-panel__title">Join requests</h2>
+                <span className="ui-panel__meta">{requests.length}</span>
               </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: 'var(--text-muted)', fontSize: '13px' }}>
-                  Membership Type
-                </label>
-                <select 
-                  className="input" 
-                  value={addMembershipType} 
-                  onChange={e => setAddMembershipType(e.target.value)}
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)' }}
-                >
-                  <option value="member">Member</option>
-                  <option value="core_team">Core Team</option>
-                </select>
-              </div>
-              {addMembershipType === 'core_team' && (
+              <button type="button" className="ui-icon-btn" onClick={() => setModal(null)} aria-label="Close">
+                <CloseIcon />
+              </button>
+            </div>
+
+            <div className="ui-panel__body ui-panel__body--flush">
+              {loading ? (
+                <div className="clubs-skel clubs-skel--row">
+                  <div className="ui-skel clubs-skel__plate clubs-skel__plate--sm" />
+                  <div className="clubs-skel__body">
+                    <div className="ui-skel clubs-skel__line clubs-skel__line--title" />
+                    <div className="ui-skel clubs-skel__line clubs-skel__line--short" />
+                  </div>
+                </div>
+              ) : requests.length ? (
                 <div>
-                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: 'var(--text-muted)', fontSize: '13px' }}>
-                    Position
-                  </label>
-                  <input 
-                    type="text" 
-                    className="input" 
-                    placeholder="Position (e.g. Technical Lead)" 
-                    value={addPosition} 
-                    onChange={e => setAddPosition(e.target.value)} 
-                    required 
-                    style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)' }}
-                  />
+                  {requests.map(r => (
+                    <div key={r._id} className="clubs-requests__row">
+                      {r.studentId?.profileImage ? (
+                        <img src={r.studentId.profileImage} alt="" className="ui-avatar" />
+                      ) : (
+                        <span className="ui-avatar" aria-hidden="true">{initials(r.studentId?.name)}</span>
+                      )}
+
+                      <div className="ui-grow">
+                        <div className="clubs-member__name">{r.studentId?.name || 'Unknown student'}</div>
+                        <div className="clubs-requests__meta">
+                          <a href={`mailto:${r.studentId?.email}`}>{r.studentId?.email}</a>
+                          {r.studentId?.department ? ` · ${r.studentId.department}` : ''}
+                          {r.studentId?.semester ? ` · Semester ${r.studentId.semester}` : ''}
+                          {r.createdAt ? ` · ${new Date(r.createdAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}` : ''}
+                        </div>
+                      </div>
+
+                      <div className="clubs-requests__actions">
+                        <button type="button" className="ui-btn ui-btn--sm" onClick={() => handleApprove(r._id)}>
+                          <CheckIcon />
+                          Approve
+                        </button>
+                        <button type="button" className="ui-btn ui-btn--ghost ui-btn--sm clubs-requests__reject" onClick={() => handleReject(r._id)}>
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="clubs-admin__empty">
+                  <CheckIcon />
+                  <span>No requests waiting.</span>
                 </div>
               )}
-              <button 
-                type="submit" 
-                className="btn btn-primary" 
-                disabled={!addStudentId}
-                style={{ alignSelf: 'flex-start' }}
-              >
-                Add Member
-              </button>
-            </form>
-          </div>
-        </div>
+            </div>
 
-        <div className="card">
-          <h3 className="card-title" style={{ marginBottom: '16px' }}>Update Club Images</h3>
-          <div className="card-body" style={{ padding: 0, display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div>
-              <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '16px' }}>
-                Upload a clear, high-resolution logo for your club.
-              </p>
-              <input type="file" accept="image/*" ref={fileInputRef} onChange={handleLogoUpload} style={{ display: 'none' }} />
-              <button className="btn btn-outline" disabled={uploading} onClick={() => fileInputRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>📷</span> {uploading ? 'Uploading...' : 'Choose Logo Image'}
+            <div className="ui-modal__foot">
+              <button type="button" className="ui-btn ui-btn--ghost" onClick={() => setModal(null)}>
+                Close
               </button>
-            </div>
-            
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '24px' }}>
-              <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '16px' }}>
-                Upload a wide cover image to appear at the top of the club details page.
-              </p>
-              <input type="file" accept="image/*" ref={coverImageInputRef} onChange={handleCoverImageUpload} style={{ display: 'none' }} />
-              <button className="btn btn-outline" disabled={uploadingCover} onClick={() => coverImageInputRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>🖼️</span> {uploadingCover ? 'Uploading...' : 'Choose Cover Image'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-      {user?.role === 'club_admin' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px' }}>
-          <div className="card">
-            <h3 className="card-title" style={{ marginBottom: '16px' }}>Edit Club Details</h3>
-            <div className="card-body" style={{ padding: 0 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: 'var(--text-muted)', fontSize: '13px' }}>Club Name</label>
-                  <input 
-                    type="text" 
-                    className="input"
-                    value={editName}
-                    onChange={e => setEditName(e.target.value)}
-                    style={{ width: '100%', padding: '10px 12px' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: 'var(--text-muted)', fontSize: '13px' }}>Description</label>
-                  <textarea 
-                    className="input"
-                    value={editDescription}
-                    onChange={e => setEditDescription(e.target.value)}
-                    rows={4}
-                    style={{ width: '100%', padding: '10px 12px', resize: 'vertical' }}
-                  />
-                </div>
-                <button className="btn btn-primary" onClick={handleUpdateDetails} disabled={loading} style={{ alignSelf: 'flex-start' }}>Save Changes</button>
-              </div>
-            </div>
-          </div>
-
-          <div className="card">
-            <h3 className="card-title" style={{ marginBottom: '16px' }}>Faculty Coordinator Assignment</h3>
-            <div className="card-body" style={{ padding: 0 }}>
-              <div style={{ marginBottom: '16px', padding: '16px', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: '12px', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600, marginBottom: '8px' }}>Current Coordinator</div>
-                {club.facultyCoordinatorId ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--primary-glow)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
-                      {(typeof club.facultyCoordinatorId === 'object' ? club.facultyCoordinatorId.name : '?').charAt(0)}
-                    </div>
-                    <div>
-                      <UserDisplay user={typeof club.facultyCoordinatorId === 'object' ? club.facultyCoordinatorId : { name: club.facultyCoordinatorId }} />
-                      {typeof club.facultyCoordinatorId === 'object' && <div style={{ fontSize: '12px', color: 'var(--text-faint)' }}>{club.facultyCoordinatorId.email}</div>}
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ color: 'var(--warn)', fontWeight: 500 }}>No Coordinator Assigned</div>
-                )}
-              </div>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: 'var(--text-muted)', fontSize: '13px' }}>Assign / Reassign Coordinator</label>
-                  <UserSelect
-                    role="faculty_coordinator"
-                    value={selectedCoordinatorId}
-                    onChange={setSelectedCoordinatorId}
-                    placeholder="Search and select faculty coordinator..."
-                    disabledUserIds={currentCoordinatorId ? [currentCoordinatorId] : []}
-                    disabledReason="Currently assigned"
-                  />
-                </div>
-                <button 
-                  className="btn btn-outline" 
-                  style={{ alignSelf: 'flex-start', color: 'var(--primary)', borderColor: 'var(--primary-soft)' }} 
-                  onClick={handleAssignCoordinator} 
-                  disabled={updatingCoordinator || selectedCoordinatorId === currentCoordinatorId}
-                >
-                  {updatingCoordinator ? 'Updating...' : 'Update Assignment'}
-                </button>
-              </div>
             </div>
           </div>
         </div>
       )}
-    </div>
+
+      {modal === 'edit' && (
+        <div className="ui-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setModal(null); }}>
+          <div className="ui-modal" role="dialog" aria-modal="true" aria-labelledby="clubs-edit-title">
+            <div className="ui-modal__head">
+              <div>
+                <h2 id="clubs-edit-title" className="ui-panel__title">Edit club details</h2>
+              </div>
+              <button type="button" className="ui-icon-btn" onClick={() => setModal(null)} aria-label="Close">
+                <CloseIcon />
+              </button>
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); handleUpdateDetails(); }}>
+              <div className="ui-modal__body clubs-modal__body">
+                <div>
+                  <label className="ui-label" htmlFor="clubs-edit-name">Club name</label>
+                  <input
+                    id="clubs-edit-name"
+                    className="ui-field"
+                    type="text"
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    required
+                    disabled={saving}
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="ui-label" htmlFor="clubs-edit-description">Description</label>
+                  <textarea
+                    id="clubs-edit-description"
+                    className="ui-field ui-field--area"
+                    value={editDescription}
+                    onChange={e => setEditDescription(e.target.value)}
+                    rows={4}
+                    disabled={saving}
+                  />
+                </div>
+              </div>
+              <div className="ui-modal__foot">
+                <button type="button" className="ui-btn ui-btn--ghost" onClick={() => setModal(null)} disabled={saving}>
+                  Cancel
+                </button>
+                <button type="submit" className="ui-btn ui-btn--primary" disabled={saving}>
+                  {saving ? 'Saving…' : 'Save changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {modal === 'member' && (
+        <div className="ui-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setModal(null); }}>
+          <div className="ui-modal" role="dialog" aria-modal="true" aria-labelledby="clubs-member-title">
+            <div className="ui-modal__head">
+              <div>
+                <h2 id="clubs-member-title" className="ui-panel__title">Add member</h2>
+              </div>
+              <button type="button" className="ui-icon-btn" onClick={() => setModal(null)} aria-label="Close">
+                <CloseIcon />
+              </button>
+            </div>
+            <form onSubmit={handleAddMember}>
+              <div className="ui-modal__body clubs-modal__body">
+                <div>
+                  <label className="ui-label" htmlFor="clubs-add-student">Student</label>
+                  <UserSelect
+                    id="clubs-add-student"
+                    role="student"
+                    value={addStudentId}
+                    onChange={setAddStudentId}
+                    placeholder="Search and select student…"
+                    disabledUserIds={existingMemberIds}
+                    disabledReason="Already a member"
+                  />
+                </div>
+
+                <div>
+                  <label className="ui-label" htmlFor="clubs-add-type">Membership</label>
+                  <span className="clubs-select">
+                    <select
+                      id="clubs-add-type"
+                      className="ui-field ui-field--select"
+                      value={addMembershipType}
+                      onChange={e => setAddMembershipType(e.target.value)}
+                    >
+                      <option value="member">Member</option>
+                      <option value="core_team">Core team</option>
+                    </select>
+                  </span>
+                </div>
+
+                {addMembershipType === 'core_team' && (
+                  <div>
+                    <label className="ui-label" htmlFor="clubs-add-position">Position</label>
+                    <input
+                      id="clubs-add-position"
+                      type="text"
+                      className="ui-field"
+                      placeholder="e.g. Technical lead"
+                      value={addPosition}
+                      onChange={e => setAddPosition(e.target.value)}
+                      required
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="ui-modal__foot">
+                <button type="button" className="ui-btn ui-btn--ghost" onClick={() => setModal(null)} disabled={saving}>
+                  Cancel
+                </button>
+                <button type="submit" className="ui-btn ui-btn--primary" disabled={!addStudentId || saving}>
+                  {saving ? 'Adding…' : 'Add member'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {modal === 'coordinator' && (
+        <div className="ui-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setModal(null); }}>
+          <div className="ui-modal" role="dialog" aria-modal="true" aria-labelledby="clubs-coordinator-title">
+            <div className="ui-modal__head">
+              <div>
+                <h2 id="clubs-coordinator-title" className="ui-panel__title">Faculty coordinator</h2>
+              </div>
+              <button type="button" className="ui-icon-btn" onClick={() => setModal(null)} aria-label="Close">
+                <CloseIcon />
+              </button>
+            </div>
+            <div className="ui-modal__body clubs-modal__body">
+              <div className="clubs-upload">
+                <div className="clubs-upload__text">
+                  <p className="clubs-upload__title">
+                    {club.facultyCoordinatorId
+                      ? (typeof club.facultyCoordinatorId === 'object' ? club.facultyCoordinatorId.name : club.facultyCoordinatorId)
+                      : 'No coordinator assigned'}
+                  </p>
+                  {typeof club.facultyCoordinatorId === 'object' && club.facultyCoordinatorId?.email ? (
+                    <p className="clubs-upload__hint">{club.facultyCoordinatorId.email}</p>
+                  ) : null}
+                </div>
+                <span className={`ui-tag ${club.facultyCoordinatorId ? 'is-positive' : 'is-warning'}`}>
+                  {club.facultyCoordinatorId ? 'Assigned' : 'Unassigned'}
+                </span>
+              </div>
+
+              <div>
+                <label className="ui-label" htmlFor="clubs-coordinator-select">Assign or reassign</label>
+                <UserSelect
+                  id="clubs-coordinator-select"
+                  role="faculty_coordinator"
+                  value={selectedCoordinatorId}
+                  onChange={setSelectedCoordinatorId}
+                  placeholder="Search and select faculty coordinator…"
+                  disabledUserIds={currentCoordinatorId ? [currentCoordinatorId] : []}
+                  disabledReason="Currently assigned"
+                />
+              </div>
+            </div>
+            <div className="ui-modal__foot">
+              <button type="button" className="ui-btn ui-btn--ghost" onClick={() => setModal(null)} disabled={assigning}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="ui-btn ui-btn--primary"
+                onClick={handleAssignCoordinator}
+                disabled={assigning || selectedCoordinatorId === currentCoordinatorId}
+              >
+                {assigning ? 'Updating…' : 'Update assignment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modal === 'images' && (
+        <div className="ui-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setModal(null); }}>
+          <div className="ui-modal" role="dialog" aria-modal="true" aria-labelledby="clubs-images-title">
+            <div className="ui-modal__head">
+              <div>
+                <h2 id="clubs-images-title" className="ui-panel__title">Club images</h2>
+              </div>
+              <button type="button" className="ui-icon-btn" onClick={() => setModal(null)} aria-label="Close">
+                <CloseIcon />
+              </button>
+            </div>
+            <div className="ui-modal__body clubs-modal__body">
+              <input type="file" accept="image/*" ref={fileInputRef} onChange={handleLogoUpload} className="ui-visually-hidden" id="clubs-logo-input" />
+              <div className="clubs-upload">
+                <div className="clubs-upload__text">
+                  <p className="clubs-upload__title">Logo</p>
+                  <p className="clubs-upload__hint">Square, 400 px or larger.</p>
+                </div>
+                <button type="button" className="ui-btn ui-btn--sm" disabled={uploading} onClick={() => fileInputRef.current?.click()}>
+                  {uploading ? 'Uploading…' : 'Choose logo'}
+                </button>
+              </div>
+
+              <input type="file" accept="image/*" ref={coverImageInputRef} onChange={handleCoverImageUpload} className="ui-visually-hidden" id="clubs-cover-input" />
+              <div className="clubs-upload">
+                <div className="clubs-upload__text">
+                  <p className="clubs-upload__title">Cover image</p>
+                  <p className="clubs-upload__hint">Wide, around 1600 × 400 px.</p>
+                </div>
+                <button type="button" className="ui-btn ui-btn--sm" disabled={uploadingCover} onClick={() => coverImageInputRef.current?.click()}>
+                  {uploadingCover ? 'Uploading…' : 'Choose cover'}
+                </button>
+              </div>
+            </div>
+            <div className="ui-modal__foot">
+              <button type="button" className="ui-btn ui-btn--ghost" onClick={() => setModal(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

@@ -1,356 +1,210 @@
-import { useEffect, useState, useRef } from 'react';
-import { ToolEmblem } from './icons/ToolIcons';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 export interface LoadingScreenProps {
   /**
-   * If true, signals that data has arrived and the final screw can tighten
-   * and the panel swing open.
+   * If true, signals that the destination's data has arrived: the fourth tick of
+   * the progress hairline can close and the route is shown.
    */
   isReady?: boolean;
   /**
-   * Callback fired once the panel finishes swinging open and exits.
+   * Callback fired once the loader has finished and may be unmounted.
    */
   onComplete?: () => void;
   /**
-   * Caption text displayed below the panel.
+   * Caption text displayed under the progress hairline.
    */
   caption?: string;
   /**
    * Whether to render as fixed full-screen overlay (true by default).
    */
   fullScreen?: boolean;
+  /** Fade the whole scene out (used while the app mounts underneath it). */
+  leaving?: boolean;
 }
 
-type Stage = 'screw1' | 'screw2' | 'screw3' | 'ratchet' | 'tightenFinal' | 'swingOpen' | 'complete';
+const ROUTE_LABELS: Record<string, string> = {
+  dashboard: 'Dashboard',
+  clubs: 'Clubs',
+  projects: 'Projects',
+  events: 'Events',
+  notifications: 'Notifications',
+  inventory: 'Inventory',
+  'material-requests': 'Material requests',
+  profile: 'Profile',
+  login: 'Sign in',
+  register: 'Create account',
+};
 
+const TOTAL_STEPS = 4;
+
+/** The route being loaded, taken from the URL rather than a prop. */
+function routeLabel(pathname: string): string {
+  const segments = pathname.split('/').filter(Boolean);
+  const root = segments[0];
+  if (!root) return 'CNP Department';
+  if (segments.length > 1) {
+    if (root === 'clubs') return 'Club details';
+    if (root === 'projects') return 'Project details';
+  }
+  return ROUTE_LABELS[root] ?? root.charAt(0).toUpperCase() + root.slice(1).replace(/-/g, ' ');
+}
+
+function prefersReducedMotionNow(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/**
+ * Boot loader — the register opens.
+ *
+ * A closed cobalt cover stands over a ruled page; it swings back on its spine and
+ * the page underneath is what actually reports progress: the route, a four-tick
+ * hairline, and an honest caption. The cover is a real 3D leaf (front and inside
+ * faces), so the hinge reads at any width; under reduced motion it simply starts
+ * open.
+ *
+ * The fourth tick is the only one that waits: it closes when the caller says the
+ * page is ready, never on a timer.
+ */
 export default function LoadingScreen({
   isReady = true,
   onComplete,
   caption,
   fullScreen = true,
+  leaving = false,
 }: LoadingScreenProps) {
-  const [stage, setStage] = useState<Stage>('screw1');
-  const [tightened, setTightened] = useState({
-    screw1: false,
-    screw2: false,
-    screw3: false,
-    screw4: false,
-  });
+  const location = useLocation();
+  const [step, setStep] = useState(0);
+  const [reducedMotion, setReducedMotion] = useState(prefersReducedMotionNow);
+  const [complete, setComplete] = useState(false);
 
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const isReadyRef = useRef(isReady);
   isReadyRef.current = isReady;
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+  const firedRef = useRef(false);
 
-  // Check reduced motion preference
   useEffect(() => {
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
-    setPrefersReducedMotion(media.matches);
-
-    const listener = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+    setReducedMotion(media.matches);
+    const listener = (event: MediaQueryListEvent) => setReducedMotion(event.matches);
     media.addEventListener?.('change', listener);
     return () => media.removeEventListener?.('change', listener);
   }, []);
 
-  // Main animation sequencing
+  const finish = useCallback(() => {
+    if (firedRef.current) return;
+    firedRef.current = true;
+    setComplete(true);
+    onCompleteRef.current?.();
+  }, []);
+
+  /* Ticks one to three on a fixed cadence: snappy if the data is already there. */
   useEffect(() => {
-    let cancelled = false;
+    if (reducedMotion) return;
+    const cadence = isReadyRef.current ? 70 : 200;
+    const timers = [1, 2, 3].map((index) =>
+      window.setTimeout(() => setStep((current) => Math.max(current, index)), cadence * index),
+    );
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [reducedMotion]);
 
-    // Reduced motion mode: static panel with gentle pulse until isReady
-    if (prefersReducedMotion) {
-      setTightened({ screw1: true, screw2: true, screw3: true, screw4: true });
-      if (isReady) {
-        const timer = window.setTimeout(() => {
-          if (!cancelled) {
-            setStage('complete');
-            onComplete?.();
-          }
-        }, 250);
-        return () => {
-          cancelled = true;
-          window.clearTimeout(timer);
-        };
-      }
-      return;
-    }
-
-    // Normal motion mode:
-    // Determine pacing: if isReady is already true from the start, run a snappy cadence (~70ms each).
-    // Otherwise, run comfortable cadence (~220ms each) until reaching the 4th screw.
-    const isFast = isReadyRef.current;
-    const stepTime = isFast ? 65 : 220;
-
-    // Step 1: Tighten Screw 1 (Top-Left)
-    const t1 = window.setTimeout(() => {
-      if (cancelled) return;
-      setTightened((prev) => ({ ...prev, screw1: true }));
-      setStage('screw2');
-
-      // Step 2: Tighten Screw 2 (Top-Right)
-      const t2 = window.setTimeout(() => {
-        if (cancelled) return;
-        setTightened((prev) => ({ ...prev, screw2: true }));
-        setStage('screw3');
-
-        // Step 3: Tighten Screw 3 (Bottom-Left)
-        const t3 = window.setTimeout(() => {
-          if (cancelled) return;
-          setTightened((prev) => ({ ...prev, screw3: true }));
-
-          // Step 4: Move to Screw 4 (Bottom-Right)
-          if (isReadyRef.current) {
-            // Data is already ready! Tighten screw 4 immediately
-            finishFinalScrew();
-          } else {
-            // Data not ready yet: Enter ratchet loop on screw 4
-            setStage('ratchet');
-          }
-        }, stepTime);
-
-        return () => window.clearTimeout(t3);
-      }, stepTime);
-
-      return () => window.clearTimeout(t2);
-    }, stepTime);
-
-    const finishFinalScrew = () => {
-      if (cancelled) return;
-      setStage('tightenFinal');
-      setTightened({ screw1: true, screw2: true, screw3: true, screw4: true });
-
-      // After final screw tightens, swing panel open
-      const tFinal = window.setTimeout(() => {
-        if (cancelled) return;
-        setStage('swingOpen');
-
-        // Panel swings open over 450ms, then completes
-        const tSwing = window.setTimeout(() => {
-          if (cancelled) return;
-          setStage('complete');
-          onComplete?.();
-        }, 460);
-
-        return () => window.clearTimeout(tSwing);
-      }, 260);
-
-      return () => window.clearTimeout(tFinal);
-    };
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(t1);
-    };
-  }, [prefersReducedMotion]);
-
-  // When stage is currently ratcheting and isReady becomes true:
+  /* The fourth tick is the honest one: it only closes when the page says it is ready. */
   useEffect(() => {
-    if (stage === 'ratchet' && isReady) {
-      setStage('tightenFinal');
-      setTightened({ screw1: true, screw2: true, screw3: true, screw4: true });
-
-      const tSwing = window.setTimeout(() => {
-        setStage('swingOpen');
-        const tDone = window.setTimeout(() => {
-          setStage('complete');
-          onComplete?.();
-        }, 460);
-        return () => window.clearTimeout(tDone);
-      }, 260);
-
-      return () => window.clearTimeout(tSwing);
+    if (reducedMotion) {
+      setStep(TOTAL_STEPS);
+      if (!isReady) return;
+      const timer = window.setTimeout(finish, 220);
+      return () => window.clearTimeout(timer);
     }
-  }, [stage, isReady, onComplete]);
 
-  if (stage === 'complete') {
-    return null;
-  }
+    if (step < 3) return;
+    if (!isReady) return;
 
-  // Screwdriver active position target
-  const getToolTarget = () => {
-    switch (stage) {
-      case 'screw1':
-        return { x: 44, y: 42, angle: -15 };
-      case 'screw2':
-        return { x: 398, y: 42, angle: 15 };
-      case 'screw3':
-        return { x: 44, y: 238, angle: -25 };
-      case 'ratchet':
-      case 'tightenFinal':
-      case 'swingOpen':
-      default:
-        return { x: 398, y: 238, angle: 25 };
+    if (step === 3) {
+      const timer = window.setTimeout(() => setStep(TOTAL_STEPS), 110);
+      return () => window.clearTimeout(timer);
     }
-  };
 
-  const toolTarget = getToolTarget();
+    const timer = window.setTimeout(finish, 280);
+    return () => window.clearTimeout(timer);
+  }, [step, isReady, reducedMotion, finish]);
 
-  const getDynamicCaption = () => {
-    if (caption) return caption;
-    if (prefersReducedMotion) return 'Loading your campus workspace…';
-    if (stage === 'screw1' || stage === 'screw2' || stage === 'screw3') {
-      return 'Securing access hatch…';
-    }
-    if (stage === 'ratchet') {
-      return 'Connecting to workspace data…';
-    }
-    if (stage === 'tightenFinal' || stage === 'swingOpen') {
-      return 'Access verified. Welcome.';
-    }
-    return 'Loading your campus workspace…';
-  };
+  /* The loader never unmounts itself: its owner owns the exit. It reports
+     `onComplete` and the caller decides when the scene is gone (the boot gate
+     fades it over the incoming page). */
+
+  /* Never outstay the route. */
+  useEffect(() => {
+    if (complete) return;
+    const timer = window.setTimeout(finish, 2600);
+    return () => window.clearTimeout(timer);
+  }, [complete, finish]);
+
+  const label = routeLabel(location.pathname);
+  // The fourth tick is held open while the page is still working: say so honestly.
+  const progress = isReady ? step : Math.min(step, TOTAL_STEPS - 1);
+  const resolvedCaption =
+    caption ??
+    (isReady && step >= TOTAL_STEPS
+      ? 'Ready.'
+      : step >= 3 && !isReady
+        ? 'Waiting for this page to finish loading…'
+        : `Opening ${label.toLowerCase()}…`);
 
   return (
     <div
-      className={`cnp-steel-loader-backdrop ${fullScreen ? 'fullscreen' : 'inline'} ${
-        stage === 'swingOpen' ? 'stage-swing-open' : ''
-      } ${prefersReducedMotion ? 'reduced-motion' : ''}`}
+      className={`shell-loader${fullScreen ? '' : ' shell-loader--inline'}${leaving ? ' is-leaving' : ''}`}
       role="status"
+      aria-live="polite"
+      aria-busy={!isReady}
       aria-label="Loading workspace"
     >
-      <div className="cnp-steel-loader-stage">
-        {/* Wall Access Hatch Assembly */}
-        <div className={`cnp-steel-hatch-wrapper ${stage === 'swingOpen' ? 'hatch-open' : ''}`}>
-          {/* Recessed Wall Frame */}
-          <div className="cnp-steel-wall-frame" />
+      <div className="shell-loader__inner">
+        <div className="shell-book">
+          {/* The page: what the report is printed on, revealed by the cover. */}
+          <div className="shell-book__page">
+            <div className="shell-loader__plate">
+              <span className="shell-book__mark shell-mark" aria-hidden="true">C</span>
 
-          {/* Hinged Steel Door Panel */}
-          <div className={`cnp-steel-door ${stage === 'swingOpen' ? 'door-swinging' : ''}`}>
-            {/* Left Industrial Hinges */}
-            <div className="cnp-steel-hinge cnp-steel-hinge-top">
-              <span className="cnp-hinge-pin" />
-            </div>
-            <div className="cnp-steel-hinge cnp-steel-hinge-bottom">
-              <span className="cnp-hinge-pin" />
-            </div>
+              <p className="shell-loader__route">{label}</p>
 
-            {/* Brushed Steel Door Face */}
-            <div className="cnp-steel-door-face">
-              {/* Technical perimeter rivets */}
-              <div className="cnp-door-rivets-top" />
-              <div className="cnp-door-rivets-bottom" />
-
-              {/* Stamped technical header & footer markings */}
-              <div className="cnp-door-header">
-                <span className="cnp-door-tag">CEC • SMC & GUIITAR</span>
-                <span className="cnp-door-serial">ACCESS MOD-04</span>
-              </div>
-
-              {/* Central Stamped Emblem featuring Gear, Spanner, and Screwdriver */}
-              <div className="cnp-door-emblem-container">
-                <ToolEmblem size={96} />
-              </div>
-
-              <div className="cnp-door-footer">
-                <span className="cnp-door-status">
-                  {stage === 'ratchet' ? (
-                    <span className="cnp-status-pulse">● SYNCING</span>
-                  ) : stage === 'tightenFinal' || stage === 'swingOpen' ? (
-                    <span className="cnp-status-locked">● SECURE</span>
-                  ) : (
-                    <span>● INITIALIZING</span>
-                  )}
-                </span>
-                <span className="cnp-door-subtag">ENGINEERING DIVISION</span>
-              </div>
-
-              {/* Four Corner Screws */}
-              {/* Screw 1: Top-Left */}
               <div
-                className={`cnp-corner-screw screw-top-left ${
-                  tightened.screw1 ? 'is-tight' : 'is-loose'
-                }`}
-                style={{ left: 24, top: 22 }}
+                className="shell-loader__track"
+                role="progressbar"
+                aria-label="Loading progress"
+                aria-valuemin={0}
+                aria-valuemax={TOTAL_STEPS}
+                aria-valuenow={progress}
+                aria-valuetext={`${progress} of ${TOTAL_STEPS}`}
               >
-                <div className="cnp-screw-bevel">
-                  <div className="cnp-screw-head">
-                    <span className="cnp-screw-slot-h" />
-                    <span className="cnp-screw-slot-v" />
-                  </div>
-                </div>
+                {Array.from({ length: TOTAL_STEPS }, (_, index) => {
+                  const isOn = index < step;
+                  const isWaiting = index === 3 && step >= 3 && !isReady && !reducedMotion;
+                  return (
+                    <span
+                      key={index}
+                      className={`shell-loader__seg${isOn ? ' is-on' : ''}${isWaiting ? ' is-waiting' : ''}`}
+                    >
+                      <span className="shell-loader__fill" />
+                    </span>
+                  );
+                })}
               </div>
 
-              {/* Screw 2: Top-Right */}
-              <div
-                className={`cnp-corner-screw screw-top-right ${
-                  tightened.screw2 ? 'is-tight' : 'is-loose'
-                }`}
-                style={{ right: 24, top: 22 }}
-              >
-                <div className="cnp-screw-bevel">
-                  <div className="cnp-screw-head">
-                    <span className="cnp-screw-slot-h" />
-                    <span className="cnp-screw-slot-v" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Screw 3: Bottom-Left */}
-              <div
-                className={`cnp-corner-screw screw-bottom-left ${
-                  tightened.screw3 ? 'is-tight' : 'is-loose'
-                }`}
-                style={{ left: 24, bottom: 22 }}
-              >
-                <div className="cnp-screw-bevel">
-                  <div className="cnp-screw-head">
-                    <span className="cnp-screw-slot-h" />
-                    <span className="cnp-screw-slot-v" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Screw 4: Bottom-Right (Loose & Ratcheting until data arrives!) */}
-              <div
-                className={`cnp-corner-screw screw-bottom-right ${
-                  tightened.screw4
-                    ? 'is-tight'
-                    : stage === 'ratchet'
-                    ? 'is-ratcheting'
-                    : 'is-loose'
-                }`}
-                style={{ right: 24, bottom: 22 }}
-              >
-                <div className="cnp-screw-bevel">
-                  <div className="cnp-screw-head">
-                    <span className="cnp-screw-slot-h" />
-                    <span className="cnp-screw-slot-v" />
-                  </div>
-                </div>
-              </div>
+              <p className="shell-loader__caption">{resolvedCaption}</p>
             </div>
           </div>
 
-          {/* Animated Screwdriver Tool (Hidden in reduced motion or after door swings open) */}
-          {!prefersReducedMotion && stage !== 'swingOpen' && (
-            <div
-              className={`cnp-screwdriver-tool stage-${stage}`}
-              style={{
-                transform: `translate(${toolTarget.x}px, ${toolTarget.y}px) rotate(${toolTarget.angle}deg)`,
-              }}
-              aria-hidden="true"
-            >
-              <div className="cnp-screwdriver-body">
-                {/* Cross-head tip fitting right into screw head at (0,0) */}
-                <div className="cnp-tool-tip" />
-                {/* Chrome steel blade / shank */}
-                <div className="cnp-tool-shank" />
-                {/* Gold / Brass Accent Bolster Collar */}
-                <div className="cnp-tool-collar" />
-                {/* Navy Blue Ergonomic Gripped Handle */}
-                <div className="cnp-tool-handle">
-                  <span className="cnp-handle-flute flute-1" />
-                  <span className="cnp-handle-flute flute-2" />
-                  <span className="cnp-handle-flute flute-gold" />
-                </div>
-                {/* Striking Cap */}
-                <div className="cnp-tool-cap" />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Dynamic Caption */}
-        <div className="cnp-steel-caption-wrap">
-          <span className="cnp-steel-caption">{getDynamicCaption()}</span>
+          {/* The cover: a leaf hinged on the spine, with an outside and an inside. */}
+          <div className="shell-book__leaf" aria-hidden="true">
+            <span className="shell-book__face shell-book__face--out">
+              <span className="shell-book__frame" />
+            </span>
+            <span className="shell-book__face shell-book__face--in">
+              <span className="shell-book__endpaper" />
+            </span>
+          </div>
         </div>
       </div>
     </div>

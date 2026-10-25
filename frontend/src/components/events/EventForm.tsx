@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { api } from '../../services/api';
+import '../../pages/Events/events.css';
 
 export interface EventFormProps {
   clubId?: string;
@@ -9,6 +10,11 @@ export interface EventFormProps {
   onCancel: () => void;
 }
 
+/**
+ * The event form. Rendered by the Events page inside a `.ui-modal` whose head
+ * it does not own; the body and the foot are the form's own composition.
+ * Fields, validation, payload and edit mode are unchanged.
+ */
 export function EventForm({ clubId, availableClubs, event, onSave, onCancel }: EventFormProps) {
   const initialClubId =
     clubId ||
@@ -73,7 +79,7 @@ export function EventForm({ clubId, availableClubs, event, onSave, onCancel }: E
     }
   }, [event, clubId, availableClubs]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
@@ -143,167 +149,211 @@ export function EventForm({ clubId, availableClubs, event, onSave, onCancel }: E
   };
 
   return (
-    <div className="card" style={{ marginBottom: '20px', border: '1px solid var(--primary)', padding: '24px' }}>
-      <div className="card-header" style={{ marginBottom: '16px' }}>
-        <h3 style={{ margin: 0, fontSize: '18px' }}>{event ? 'Edit Event' : 'Create New Event'}</h3>
-      </div>
-      <div className="card-body" style={{ padding: 0 }}>
-        {error && <div className="auth-error" style={{ marginBottom: '16px' }}>{error}</div>}
-        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '16px' }}>
-          {/* Club Selector if multiple available clubs and not pre-fixed */}
-          {availableClubs && availableClubs.length > 1 && !event && (
-            <div className="auth-field" style={{ margin: 0 }}>
-              <label>Select Organizing Club</label>
-              <select
-                className="input"
-                value={selectedClubId}
-                onChange={e => setSelectedClubId(e.target.value)}
-                required
-              >
-                <option value="" disabled>Choose a club...</option>
-                {availableClubs.map(c => (
-                  <option key={c._id} value={c._id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+    <form className="evt-form" onSubmit={handleSubmit}>
+      <div className="ui-modal__body evt-form__body">
+        {error && (
+          <p className="ui-notice ui-notice--error" role="alert">
+            <svg className="evt-i evt-i--sm" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="8.5" />
+              <path d="M12 7.8v4.6M12 16.1v.2" />
+            </svg>
+            {error}
+          </p>
+        )}
 
-          <div className="auth-field" style={{ margin: 0 }}>
-            <label>Title</label>
+        {availableClubs && availableClubs.length > 1 && !event && (
+          <div>
+            <label className="ui-label" htmlFor="evt-field-club">
+              Organising club
+            </label>
+            <select
+              id="evt-field-club"
+              className="ui-field ui-field--select"
+              value={selectedClubId}
+              onChange={e => setSelectedClubId(e.target.value)}
+              required
+            >
+              <option value="" disabled>
+                Choose a club
+              </option>
+              {availableClubs.map(c => (
+                <option key={c._id} value={c._id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div>
+          <label className="ui-label" htmlFor="evt-field-title">
+            Title
+          </label>
+          <input
+            id="evt-field-title"
+            className="ui-field"
+            type="text"
+            placeholder="e.g. Photography walk"
+            value={formData.title}
+            onChange={e => setFormData({ ...formData, title: e.target.value })}
+            autoFocus
+            required
+          />
+        </div>
+
+        <div className="evt-form__grid">
+          <div>
+            <label className="ui-label" htmlFor="evt-field-date">
+              Date
+            </label>
             <input
-              type="text"
-              placeholder="e.g. Photography Walk or Robotics Workshop"
-              value={formData.title}
-              onChange={e => setFormData({ ...formData, title: e.target.value })}
+              id="evt-field-date"
+              className="ui-field"
+              type="date"
+              value={formData.date}
+              onChange={e => setFormData({ ...formData, date: e.target.value })}
               required
             />
           </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            <div className="auth-field" style={{ margin: 0 }}>
-              <label>Date</label>
-              <input
-                type="date"
-                value={formData.date}
-                onChange={e => setFormData({ ...formData, date: e.target.value })}
-                required
-              />
-            </div>
-            <div className="auth-field" style={{ margin: 0 }}>
-              <label>Time</label>
-              <input
-                type="time"
-                value={formData.time}
-                onChange={e => setFormData({ ...formData, time: e.target.value })}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="auth-field" style={{ margin: 0 }}>
-            <label>Location</label>
+          <div>
+            <label className="ui-label" htmlFor="evt-field-time">
+              Starts
+            </label>
             <input
-              type="text"
-              placeholder="e.g. University Campus, Seminar Hall 2"
-              value={formData.location}
-              onChange={e => setFormData({ ...formData, location: e.target.value })}
+              id="evt-field-time"
+              className="ui-field"
+              type="time"
+              value={formData.time}
+              onChange={e => setFormData({ ...formData, time: e.target.value })}
               required
             />
           </div>
+        </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            <div className="auth-field" style={{ margin: 0 }}>
-              <label>Link Display Name (Optional)</label>
-              <input
-                type="text"
-                placeholder="e.g. Registration Link"
-                value={formData.eventLinkName}
-                onChange={e => setFormData({ ...formData, eventLinkName: e.target.value })}
-              />
-            </div>
-            <div className="auth-field" style={{ margin: 0 }}>
-              <label>Event Link URL (Optional)</label>
-              <input
-                type="url"
-                placeholder="https://..."
-                value={formData.eventLink}
-                onChange={e => setFormData({ ...formData, eventLink: e.target.value })}
-              />
-            </div>
+        <div>
+          <label className="ui-label" htmlFor="evt-field-location">
+            Venue
+          </label>
+          <input
+            id="evt-field-location"
+            className="ui-field"
+            type="text"
+            placeholder="e.g. Seminar hall 2, campus"
+            value={formData.location}
+            onChange={e => setFormData({ ...formData, location: e.target.value })}
+            required
+          />
+        </div>
+
+        <div className="evt-form__grid">
+          <div>
+            <label className="ui-label" htmlFor="evt-field-link-name">
+              Link label
+            </label>
+            <input
+              id="evt-field-link-name"
+              className="ui-field"
+              type="text"
+              placeholder="e.g. Registration"
+              value={formData.eventLinkName}
+              onChange={e => setFormData({ ...formData, eventLinkName: e.target.value })}
+            />
           </div>
+          <div>
+            <label className="ui-label" htmlFor="evt-field-link">
+              Link URL
+            </label>
+            <input
+              id="evt-field-link"
+              className="ui-field"
+              type="url"
+              placeholder="https://"
+              value={formData.eventLink}
+              onChange={e => setFormData({ ...formData, eventLink: e.target.value })}
+            />
+          </div>
+        </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'end' }}>
-            <div className="auth-field" style={{ margin: 0 }}>
-              <label>Document Display Name (Optional)</label>
-              <input
-                type="text"
-                placeholder="e.g. Event Guidelines PDF"
-                value={formData.relatedDocumentName}
-                onChange={e => setFormData({ ...formData, relatedDocumentName: e.target.value })}
-              />
-            </div>
-            <div className="auth-field" style={{ margin: 0 }}>
-              <label>Related Document (Optional, PDF/DOC)</label>
-              {event?.relatedDocument?.url && !removeDocument && !file && (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    marginBottom: '8px',
-                    padding: '8px',
-                    background: 'var(--bg)',
-                    borderRadius: '4px',
-                    border: '1px solid var(--border)',
-                  }}
+        <div className="evt-form__grid">
+          <div>
+            <label className="ui-label" htmlFor="evt-field-doc-name">
+              Document label
+            </label>
+            <input
+              id="evt-field-doc-name"
+              className="ui-field"
+              type="text"
+              placeholder="e.g. Event guidelines"
+              value={formData.relatedDocumentName}
+              onChange={e => setFormData({ ...formData, relatedDocumentName: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="ui-label" htmlFor="evt-field-doc">
+              Related document
+            </label>
+            {event?.relatedDocument?.url && !removeDocument && !file && (
+              <div className="evt-form__doc">
+                <svg className="evt-i evt-i--sm" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M13 3.5H7.5A1.5 1.5 0 0 0 6 5v14a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 18 19V8.5L13 3.5Z" />
+                  <path d="M13 3.5V8.5H18" />
+                </svg>
+                <span className="evt-form__docname">
+                  {event.relatedDocumentName || event.relatedDocument.originalName || 'Document'}
+                </span>
+                <button
+                  type="button"
+                  className="ui-btn ui-btn--quiet ui-btn--sm"
+                  onClick={() => setRemoveDocument(true)}
                 >
-                  <span style={{ fontSize: '13px', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    📎 {event.relatedDocumentName || event.relatedDocument.originalName || 'Document'}
-                  </span>
-                  <button type="button" className="btn btn-sm btn-outline" onClick={() => setRemoveDocument(true)}>
-                    Remove
-                  </button>
-                </div>
-              )}
-              <input
-                type="file"
-                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                ref={fileInputRef}
-                onChange={e => {
-                  if (e.target.files && e.target.files.length > 0) {
-                    setFile(e.target.files[0]);
-                    setRemoveDocument(false);
-                  } else {
-                    setFile(null);
-                  }
-                }}
-              />
-            </div>
-          </div>
-
-          <div className="auth-field" style={{ margin: 0 }}>
-            <label>Description</label>
-            <textarea
-              rows={3}
-              placeholder="Describe the event, agenda, and expectations..."
-              value={formData.description}
-              onChange={e => setFormData({ ...formData, description: e.target.value })}
-              required
+                  Remove
+                </button>
+              </div>
+            )}
+            <input
+              id="evt-field-doc"
+              className="evt-file"
+              type="file"
+              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              ref={fileInputRef}
+              onChange={e => {
+                if (e.target.files && e.target.files.length > 0) {
+                  setFile(e.target.files[0]);
+                  setRemoveDocument(false);
+                } else {
+                  setFile(null);
+                }
+              }}
             />
+            <p className="ui-hint">PDF or DOC, up to the server limit.</p>
           </div>
+        </div>
 
-          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
-            <button type="button" className="btn btn-outline" onClick={onCancel}>
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Saving...' : event ? 'Update Event' : 'Create Event'}
-            </button>
-          </div>
-        </form>
+        <div>
+          <label className="ui-label" htmlFor="evt-field-description">
+            Description
+          </label>
+          <textarea
+            id="evt-field-description"
+            className="ui-field ui-field--area"
+            rows={4}
+            placeholder="What happens, who it is for, what to bring."
+            value={formData.description}
+            onChange={e => setFormData({ ...formData, description: e.target.value })}
+            required
+          />
+        </div>
       </div>
-    </div>
+
+      <div className="ui-modal__foot">
+        <span className="ui-grow" />
+        <button type="button" className="ui-btn ui-btn--ghost" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="submit" className="ui-btn ui-btn--primary" disabled={loading}>
+          {loading ? 'Saving...' : event ? 'Update event' : 'Create event'}
+        </button>
+      </div>
+    </form>
   );
 }

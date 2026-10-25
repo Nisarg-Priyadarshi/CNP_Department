@@ -1,4 +1,7 @@
 import { isEventPast } from '../../eventDate';
+import { DateTile } from '../ui/vis';
+import { EventCrest } from './EventCrest';
+import '../../pages/Events/events.css';
 
 export interface EventCardProps {
   event: any;
@@ -9,6 +12,11 @@ export interface EventCardProps {
   compact?: boolean;
 }
 
+/**
+ * One event as a compact ticket: a date plate with its start time, the club
+ * crest and name, the title, venue as a mark, and the status tag giving way to
+ * the manage actions on hover. Used by the dashboards and the club detail page.
+ */
 export function EventCard({
   event,
   canManage = false,
@@ -24,15 +32,16 @@ export function EventCard({
   const rawDate = event.eventDate || event.date;
   const eventIsPast = isPast ?? isEventPast(rawDate);
   const eventDateObj = rawDate ? new Date(rawDate) : null;
-  const isValidDate = eventDateObj && !isNaN(eventDateObj.getTime());
+  const isValidDate = eventDateObj !== null && !isNaN(eventDateObj.getTime());
 
   const formattedDate = isValidDate
     ? eventDateObj.toLocaleDateString(undefined, {
-        month: 'long',
+        weekday: 'short',
         day: 'numeric',
+        month: 'short',
         year: 'numeric',
       })
-    : 'Date TBD';
+    : 'Date to be confirmed';
 
   const formattedTime = isValidDate
     ? eventDateObj.toLocaleTimeString(undefined, {
@@ -41,237 +50,121 @@ export function EventCard({
       })
     : '';
 
-  const dateTimeDisplay = formattedTime ? `${formattedDate} · ${formattedTime}` : formattedDate;
+  const hasActions = canManage && (Boolean(onEdit) || Boolean(onDelete));
 
   return (
-    <div
+    <article
       id={`event-${event._id}`}
-      className={`card event-card${eventIsPast ? ' past' : ''}`}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        background: eventIsPast ? 'var(--bg-card-2)' : 'var(--surface)',
-        border: '1px solid var(--border)',
-        borderRadius: '12px',
-        padding: compact ? '16px' : '20px',
-        opacity: 1,
-        transition: 'all 0.2s ease',
-      }}
+      className={`evt-card${eventIsPast ? ' is-past' : ''}${compact ? ' evt-card--compact' : ''}`}
+      aria-label={`${event.title}, ${clubName}, ${formattedDate}${formattedTime ? ` at ${formattedTime}` : ''}`}
     >
-      {/* Header: Club Info & Optional Badge */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '14px',
-          paddingBottom: '12px',
-          borderBottom: '1px solid var(--border)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-          {clubLogo ? (
-            <img
-              src={clubLogo}
-              alt={clubName}
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '8px',
-                objectFit: 'cover',
-                border: '1px solid var(--border)',
-                flexShrink: 0,
-              }}
-            />
-          ) : (
-            <div
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '8px',
-                background: 'var(--primary-glow)',
-                color: 'var(--primary)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '16px',
-                flexShrink: 0,
-              }}
-            >
-              🏛
-            </div>
-          )}
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.4px', fontWeight: 600 }}>
-              Organized by
-            </div>
-            <div
-              style={{
-                fontSize: '13px',
-                fontWeight: 600,
-                color: 'var(--text)',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
-              title={clubName}
-            >
-              {clubName}
-            </div>
-          </div>
-        </div>
-
-        {eventIsPast ? (
-          <span
-            className="badge"
-            style={{
-              background: '#ffedd5',
-              color: '#9a3412',
-              border: '1px solid #fdba74',
-              fontSize: '11px',
-              padding: '3px 8px',
-            }}
-          >
-            Past
-          </span>
+      <div className="evt-card__stub">
+        {isValidDate ? (
+          <DateTile date={eventDateObj} size={compact ? 'sm' : 'md'} />
         ) : (
-          <span
-            className="badge badge-success"
-            style={{
-              fontSize: '11px',
-              padding: '3px 8px',
-            }}
-          >
-            Upcoming
+          <span className="evt-card__tbd" aria-hidden="true">
+            TBD
           </span>
         )}
+        {isValidDate && <span className="evt-card__time">{formattedTime}</span>}
       </div>
 
-      {/* Main Content: Title & Details */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <h3
-          style={{
-            margin: '0 0 10px 0',
-            fontSize: compact ? '16px' : '18px',
-            fontWeight: 700,
-            color: 'var(--text)',
-            lineHeight: 1.3,
-          }}
-        >
-          {event.title}
-        </h3>
+      <div className="evt-card__main">
+        <div className="evt-card__top">
+          <p className="evt-card__club">
+            <EventCrest name={clubName} logo={clubLogo} size={18} />
+            <span>{clubName}</span>
+          </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px', fontSize: '13px', color: 'var(--text-muted)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: 'var(--primary)', fontSize: '14px' }}>📅</span>
-            <span>
-              <strong style={{ color: 'var(--text)' }}>Date:</strong> {dateTimeDisplay}
+          <div className="evt-card__slot">
+            <span className={`ui-tag evt-card__status${eventIsPast ? '' : ' is-positive'}`}>
+              {eventIsPast ? 'Past' : 'Upcoming'}
             </span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: 'var(--warn)', fontSize: '14px' }}>📍</span>
-            <span>
-              <strong style={{ color: 'var(--text)' }}>Location:</strong> {event.location}
-            </span>
+            {hasActions && (
+              <div className="evt-card__actions">
+                {onEdit && (
+                  <button
+                    type="button"
+                    className="ui-icon-btn"
+                    aria-label={`Edit ${event.title}`}
+                    onClick={() => onEdit(event)}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17v3Z" />
+                      <path d="m14.5 6.5 3 3" />
+                    </svg>
+                  </button>
+                )}
+                {onDelete && (
+                  <button
+                    type="button"
+                    className="ui-icon-btn is-danger"
+                    aria-label={`Delete ${event.title}`}
+                    onClick={() => onDelete(event._id)}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 7h16M9.5 7V4.8h5V7M6.6 7l.8 12a1.6 1.6 0 0 0 1.6 1.4h6a1.6 1.6 0 0 0 1.6-1.4l.8-12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        {event.description && (
-          <p
-            style={{
-              margin: '0 0 14px 0',
-              fontSize: '13px',
-              lineHeight: 1.5,
-              color: 'var(--text-faint)',
-              display: '-webkit-box',
-              WebkitLineClamp: compact ? 2 : 3,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-            }}
-          >
-            {event.description}
+        <h3 className="evt-card__title">{event.title}</h3>
+
+        {event.location && (
+          <p className="evt-card__meta">
+            <span>
+              <svg className="evt-i evt-i--xs" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 20.5s6.2-5.1 6.2-9.7a6.2 6.2 0 1 0-12.4 0c0 4.6 6.2 9.7 6.2 9.7Z" />
+                <circle cx="12" cy="10.6" r="2.2" />
+              </svg>
+              <span className="ui-truncate">{event.location}</span>
+            </span>
           </p>
         )}
 
-        {/* Links: Event Link & Related Document */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: 'auto', marginBottom: canManage ? '14px' : '0' }}>
-          {event.eventLink && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
-              <span>🔗</span>
+        {!compact && event.description && <p className="evt-card__desc">{event.description}</p>}
+
+        {(event.eventLink || event.relatedDocument?.url) && (
+          <div className="evt-card__links">
+            {event.eventLink && (
               <a
+                className="evt-card__link"
                 href={event.eventLink}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{
-                  color: 'var(--primary)',
-                  textDecoration: 'underline',
-                  wordBreak: 'break-all',
-                }}
               >
-                {event.eventLinkName?.trim() || 'Open Event Link'}
+                <svg className="evt-i evt-i--xs" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M10 13.5a3.5 3.5 0 0 0 5 0l2.5-2.5a3.5 3.5 0 0 0-5-5L11 7.5" />
+                  <path d="M14 10.5a3.5 3.5 0 0 0-5 0L6.5 13a3.5 3.5 0 0 0 5 5L13 16.5" />
+                </svg>
+                <span>{event.eventLinkName?.trim() || 'Event link'}</span>
               </a>
-            </div>
-          )}
-
-          {event.relatedDocument?.url && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
-              <span>📎</span>
+            )}
+            {event.relatedDocument?.url && (
               <a
+                className="evt-card__link"
                 href={event.relatedDocument.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{
-                  color: 'var(--success)',
-                  textDecoration: 'underline',
-                  wordBreak: 'break-all',
-                }}
               >
-                {event.relatedDocumentName?.trim() || event.relatedDocument.originalName || 'Open Related Document'}
+                <svg className="evt-i evt-i--xs" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M13 3.5H7.5A1.5 1.5 0 0 0 6 5v14a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 18 19V8.5L13 3.5Z" />
+                  <path d="M13 3.5V8.5H18" />
+                </svg>
+                <span>
+                  {event.relatedDocumentName?.trim() ||
+                    event.relatedDocument.originalName ||
+                    'Related document'}
+                </span>
               </a>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
-
-      {/* Footer: Manage Actions */}
-      {canManage && (
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: '8px',
-            paddingTop: '12px',
-            borderTop: '1px solid var(--border)',
-            marginTop: '12px',
-          }}
-        >
-          {onEdit && (
-            <button
-              type="button"
-              className="btn btn-sm btn-outline"
-              onClick={() => onEdit(event)}
-            >
-              Edit
-            </button>
-          )}
-          {onDelete && (
-            <button
-              type="button"
-              className="btn btn-sm btn-outline"
-              style={{
-                color: 'var(--danger)',
-                borderColor: 'var(--danger-soft)',
-                background: 'var(--danger-soft)',
-              }}
-              onClick={() => onDelete(event._id)}
-            >
-              Delete
-            </button>
-          )}
-        </div>
-      )}
-    </div>
+    </article>
   );
 }

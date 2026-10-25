@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { api } from '../../services/api';
+import { Counter, KindGlyph } from '../ui/vis';
 
 interface ProjectMaterialItem {
   _id: string;
@@ -37,9 +38,55 @@ interface ProjectMaterialItem {
 interface ProjectMaterialsProps {
   projectId: string;
   isTL?: boolean;
+  /** Lifts the composition to the page so the aside can carry one coverage ring. */
+  onSummaryChange?: (summary: {
+    total: number;
+    guitar: number;
+    purchased: number;
+    owned: number;
+  }) => void;
 }
 
-export function ProjectMaterials({ projectId, isTL = false }: ProjectMaterialsProps) {
+const SOURCE_LABEL: Record<ProjectMaterialItem['source'], string> = {
+  guitar: 'Central inventory',
+  self_purchased: 'Team bought',
+  owned: 'Already owned',
+};
+
+const FileMark = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M7 3.5h7l4 4V20.5H7V3.5Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+    <path d="M14 3.5v4h4" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+  </svg>
+);
+
+const BoxMark = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="m12 3.5 8 4v9l-8 4-8-4v-9l8-4Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+    <path d="m4 7.5 8 4 8-4M12 11.5v9" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+  </svg>
+);
+
+/* One mark per source, so the table's source column reads at a glance. */
+function SourceMark({ source }: { source: ProjectMaterialItem['source'] }) {
+  if (source === 'guitar') return <KindGlyph kind="inventory" size={14} />;
+  if (source === 'owned') {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M4.6 12.4 9.4 17.2 19.4 6.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M3.6 5.4h2.1l2.2 9.4h10.4l2-6.9H6.8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="10" cy="18.8" r="1.1" fill="currentColor" />
+      <circle cx="16.9" cy="18.8" r="1.1" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function ProjectMaterials({ projectId, isTL = false, onSummaryChange }: ProjectMaterialsProps) {
   const [materials, setMaterials] = useState<ProjectMaterialItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -58,11 +105,13 @@ export function ProjectMaterials({ projectId, isTL = false }: ProjectMaterialsPr
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [submitSuccess, setSubmitSuccess] = useState('');
+  const fieldId = useId();
+  const addTrigger = useRef<HTMLButtonElement>(null);
 
   const fetchMaterials = () => {
     api<any>('GET', `/projects/${projectId}/materials`)
-      .then(res => setMaterials(res.data || []))
-      .catch(err => {
+      .then((res) => setMaterials(res.data || []))
+      .catch((err) => {
         if (err.status !== 403) setError(err.message || 'Failed to load project materials');
       })
       .finally(() => setLoading(false));
@@ -77,11 +126,16 @@ export function ProjectMaterials({ projectId, isTL = false }: ProjectMaterialsPr
     if (isModalOpen) {
       const origOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
+      const onKeyDown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape' && !submitting) closeModal();
+      };
+      document.addEventListener('keydown', onKeyDown);
       return () => {
         document.body.style.overflow = origOverflow;
+        document.removeEventListener('keydown', onKeyDown);
       };
     }
-  }, [isModalOpen]);
+  }, [isModalOpen, submitting]);
 
   const openModal = () => {
     setIsModalOpen(true);
@@ -101,6 +155,7 @@ export function ProjectMaterials({ projectId, isTL = false }: ProjectMaterialsPr
     setIsModalOpen(false);
     setSubmitError('');
     setSubmitSuccess('');
+    addTrigger.current?.focus();
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -167,665 +222,398 @@ export function ProjectMaterials({ projectId, isTL = false }: ProjectMaterialsPr
     }
   };
 
-  const guitarCount = materials.filter(m => m.source === 'guitar').length;
-  const selfPurchasedCount = materials.filter(m => m.source === 'self_purchased').length;
-  const ownedCount = materials.filter(m => m.source === 'owned').length;
+  const guitarCount = materials.filter((m) => m.source === 'guitar').length;
+  const selfPurchasedCount = materials.filter((m) => m.source === 'self_purchased').length;
+  const ownedCount = materials.filter((m) => m.source === 'owned').length;
 
-  const filteredMaterials = materials.filter(m => {
+  useEffect(() => {
+    onSummaryChange?.({
+      total: materials.length,
+      guitar: guitarCount,
+      purchased: selfPurchasedCount,
+      owned: ownedCount,
+    });
+  }, [materials, guitarCount, selfPurchasedCount, ownedCount, onSummaryChange]);
+
+  const filteredMaterials = materials.filter((m) => {
     if (activeFilter === 'all') return true;
     return m.source === activeFilter;
   });
 
-  if (loading) return <div className="spinner"></div>;
+  const hasFiles = filteredMaterials.some(
+    (m) => m.documentUrl || m.materialRequestId?.documentUrl,
+  );
+
+  if (loading) return null;
   if (error) {
     return (
-      <div style={{ color: 'var(--danger)', padding: '16px', background: 'var(--danger-soft)', borderRadius: '8px', border: '1px solid rgba(var(--danger-rgb), 0.2)' }}>
+      <div className="ui-notice ui-notice--error" role="alert">
         {error}
       </div>
     );
   }
 
-  return (
-    <div className="card" style={{ marginTop: '24px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <h3 className="card-title" style={{ margin: 0 }}>Project Materials</h3>
-            <span
-              style={{
-                background: 'var(--surface)',
-                border: '1px solid var(--border)',
-                padding: '2px 10px',
-                borderRadius: '12px',
-                fontSize: '12px',
-                fontWeight: 600,
-                color: 'var(--text-muted)',
-              }}
-            >
-              {materials.length} {materials.length === 1 ? 'item' : 'items'}
-            </span>
-          </div>
-          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
-            Inventory of components allocated, self-purchased, or owned by the project team.
-          </p>
-        </div>
+  const filters: { key: typeof activeFilter; label: string; count: number }[] = [
+    { key: 'all', label: 'All', count: materials.length },
+    { key: 'guitar', label: 'Central inventory', count: guitarCount },
+    { key: 'self_purchased', label: 'Team bought', count: selfPurchasedCount },
+    { key: 'owned', label: 'Owned', count: ownedCount },
+  ];
 
+  return (
+    <section className="ui-panel prj-materials" id="materials" aria-labelledby="prj-materials-title">
+      <header className="ui-panel__head prj-materials__head">
+        <div className="ui-panel__titles">
+          <h2 className="ui-panel__title" id="prj-materials-title">
+            Materials
+          </h2>
+          <span className="ui-panel__meta">
+            <Counter value={materials.length} /> items
+          </span>
+        </div>
         {isTL && (
           <button
+            ref={addTrigger}
             type="button"
-            className="btn btn-outline"
+            className="ui-btn ui-btn--quiet ui-btn--sm"
             onClick={openModal}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '9px 16px',
-              fontSize: '13px',
-              fontWeight: 600,
-              borderColor: 'var(--border)',
-            }}
           >
-            <span>+</span> Add Material
+            Add material
           </button>
         )}
+      </header>
+
+      <div className="ui-panel__body prj-materials__summary">
+        <div
+          className="prj-coverage"
+          role="img"
+          aria-label={`${guitarCount} from central inventory, ${selfPurchasedCount} team bought, ${ownedCount} already owned`}
+        >
+          {materials.length ? (
+            <>
+              {guitarCount > 0 && <span className="prj-coverage__part is-guitar" style={{ flexGrow: guitarCount }} />}
+              {selfPurchasedCount > 0 && (
+                <span className="prj-coverage__part is-bought" style={{ flexGrow: selfPurchasedCount }} />
+              )}
+              {ownedCount > 0 && <span className="prj-coverage__part is-owned" style={{ flexGrow: ownedCount }} />}
+            </>
+          ) : (
+            <span className="prj-coverage__part is-empty" />
+          )}
+        </div>
+        <ul className="prj-coverage__legend">
+          <li>
+            <span className="prj-coverage__swatch is-guitar" aria-hidden="true" />
+            Central inventory <span className="prj-coverage__count">{guitarCount}</span>
+          </li>
+          <li>
+            <span className="prj-coverage__swatch is-bought" aria-hidden="true" />
+            Team bought <span className="prj-coverage__count">{selfPurchasedCount}</span>
+          </li>
+          <li>
+            <span className="prj-coverage__swatch is-owned" aria-hidden="true" />
+            Already owned <span className="prj-coverage__count">{ownedCount}</span>
+          </li>
+        </ul>
       </div>
 
-      {/* Source Filter Tabs */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
-        <button
-          type="button"
-          onClick={() => setActiveFilter('all')}
-          style={{
-            padding: '6px 14px',
-            borderRadius: '20px',
-            border: activeFilter === 'all' ? '1px solid var(--primary)' : '1px solid var(--border)',
-            background: activeFilter === 'all' ? 'var(--primary)' : '#ffffff',
-            color: activeFilter === 'all' ? '#ffffff' : 'var(--text-muted)',
-            fontSize: '12px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-          }}
-        >
-          All ({materials.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveFilter('guitar')}
-          style={{
-            padding: '6px 14px',
-            borderRadius: '20px',
-            border: activeFilter === 'guitar' ? '1px solid #4f46e5' : '1px solid var(--border)',
-            background: activeFilter === 'guitar' ? '#4f46e5' : '#ffffff',
-            color: activeFilter === 'guitar' ? '#ffffff' : 'var(--text-muted)',
-            fontSize: '12px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-          }}
-        >
-          🎸 Guitar Inventory ({guitarCount})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveFilter('self_purchased')}
-          style={{
-            padding: '6px 14px',
-            borderRadius: '20px',
-            border: activeFilter === 'self_purchased' ? '1px solid #059669' : '1px solid var(--border)',
-            background: activeFilter === 'self_purchased' ? '#059669' : '#ffffff',
-            color: activeFilter === 'self_purchased' ? '#ffffff' : 'var(--text-muted)',
-            fontSize: '12px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-          }}
-        >
-          🛍️ Self-Purchased ({selfPurchasedCount})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveFilter('owned')}
-          style={{
-            padding: '6px 14px',
-            borderRadius: '20px',
-            border: activeFilter === 'owned' ? '1px solid #d97706' : '1px solid var(--border)',
-            background: activeFilter === 'owned' ? '#d97706' : '#ffffff',
-            color: activeFilter === 'owned' ? '#ffffff' : 'var(--text-muted)',
-            fontSize: '12px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-          }}
-        >
-          📦 Owned ({ownedCount})
-        </button>
+      <div className="prj-materials__bar">
+        <div className="ui-seg" role="group" aria-label="Filter materials by source">
+          {filters.map((filter) => (
+            <button
+              key={filter.key}
+              type="button"
+              aria-pressed={activeFilter === filter.key}
+              onClick={() => setActiveFilter(filter.key)}
+            >
+              {filter.label}
+              <span className="prj-statusfilter__count">{filter.count}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Material Cards Grid */}
-      <div className="card-body" style={{ padding: 0 }}>
+      <div className="ui-panel__body ui-panel__body--flush">
         {filteredMaterials.length ? (
-          <div style={{ display: 'grid', gap: '16px', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
-            {filteredMaterials.map(mat => {
-              // Image resolution (from mat or linked request)
-              const displayImage = mat.image || mat.materialRequestId?.imageUrl;
-              // Specifications resolution
-              const displaySpecs = mat.specifications || mat.materialRequestId?.specifications;
-              // Document resolution
-              const displayDocUrl = mat.documentUrl || mat.materialRequestId?.documentUrl;
-              const displayDocName = mat.documentOriginalName || mat.materialRequestId?.documentOriginalName || 'Document';
+          <div className="ui-scroll-x">
+            <table className="ui-table prj-materials__table">
+              <thead>
+                <tr>
+                  <th scope="col">Material</th>
+                  <th scope="col">Source</th>
+                  <th scope="col" className="is-num">
+                    Qty
+                  </th>
+                  <th scope="col">Added</th>
+                  {hasFiles && <th scope="col">Files</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredMaterials.map((mat) => {
+                  const displayImage = mat.image || mat.materialRequestId?.imageUrl;
+                  const displaySpecs = mat.specifications || mat.materialRequestId?.specifications;
+                  const displayDocUrl = mat.documentUrl || mat.materialRequestId?.documentUrl;
+                  const displayDocName =
+                    mat.documentOriginalName || mat.materialRequestId?.documentOriginalName || 'Document';
 
-              // Source Badge Configuration
-              const sourceBadge = (() => {
-                if (mat.source === 'guitar') {
-                  return {
-                    label: 'Guitar Inventory',
-                    icon: '🎸',
-                    bg: 'rgba(99, 102, 241, 0.12)',
-                    color: '#4f46e5',
-                    border: 'rgba(99, 102, 241, 0.25)',
-                  };
-                }
-                if (mat.source === 'self_purchased') {
-                  return {
-                    label: 'Self-Purchased',
-                    icon: '🛍️',
-                    bg: 'rgba(16, 185, 129, 0.12)',
-                    color: '#059669',
-                    border: 'rgba(16, 185, 129, 0.25)',
-                  };
-                }
-                return {
-                  label: 'Owned',
-                  icon: '📦',
-                  bg: 'rgba(245, 158, 11, 0.12)',
-                  color: '#d97706',
-                  border: 'rgba(245, 158, 11, 0.25)',
-                };
-              })();
-
-              return (
-                <div
-                  key={mat._id}
-                  style={{
-                    padding: '20px',
-                    border: '1px solid var(--border)',
-                    borderRadius: '12px',
-                    background: 'var(--bg-card-2)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    gap: '14px',
-                    boxShadow: '0 2px 5px rgba(0,0,0,0.02)',
-                    transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                  }}
-                >
-                  {/* Top: Name, Image, Quantity */}
-                  <div>
-                    <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
-                      {/* Image Thumbnail or Source Icon */}
-                      {displayImage ? (
-                        <a
-                          href={displayImage}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title="Click to view full photo"
-                          style={{ display: 'block', flexShrink: 0 }}
-                        >
-                          <img
-                            src={displayImage}
-                            alt={mat.name}
-                            style={{
-                              width: '56px',
-                              height: '56px',
-                              borderRadius: '10px',
-                              objectFit: 'cover',
-                              border: '1px solid var(--border)',
-                              background: '#ffffff',
-                            }}
-                          />
-                        </a>
-                      ) : (
-                        <div
-                          style={{
-                            width: '56px',
-                            height: '56px',
-                            borderRadius: '10px',
-                            background: sourceBadge.bg,
-                            border: `1px solid ${sourceBadge.border}`,
-                            color: sourceBadge.color,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '24px',
-                            flexShrink: 0,
-                          }}
-                        >
-                          {sourceBadge.icon}
+                  return (
+                    <tr key={mat._id}>
+                      <td>
+                        <div className="prj-mat">
+                          {displayImage ? (
+                            <a href={displayImage} target="_blank" rel="noopener noreferrer" className="prj-mat__thumb">
+                              <img src={displayImage} alt="" />
+                            </a>
+                          ) : (
+                            <span className="prj-mat__thumb prj-mat__thumb--empty" aria-hidden="true">
+                              <BoxMark />
+                            </span>
+                          )}
+                          <div className="prj-mat__text">
+                            <p className="prj-mat__name">{mat.name}</p>
+                            {displaySpecs && <p className="prj-mat__specs">{displaySpecs}</p>}
+                          </div>
                         </div>
-                      )}
-
-                      {/* Name & Details */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                          <h4
-                            style={{
-                              margin: '0 0 4px 0',
-                              fontSize: '16px',
-                              fontWeight: 600,
-                              color: 'var(--text)',
-                              wordBreak: 'break-word',
-                            }}
-                          >
-                            {mat.name}
-                          </h4>
-                          <span
-                            style={{
-                              fontWeight: 700,
-                              color: 'var(--text)',
-                              fontSize: '13px',
-                              background: '#ffffff',
-                              border: '1px solid var(--border)',
-                              padding: '2px 8px',
-                              borderRadius: '12px',
-                              flexShrink: 0,
-                            }}
-                          >
-                            x{mat.quantity}
+                      </td>
+                      <td>
+                        <span className={`prj-src is-${mat.source}`}>
+                          <span className="prj-src__mark" aria-hidden="true">
+                            <SourceMark source={mat.source} />
                           </span>
-                        </div>
-
-                        {/* Source Badge */}
-                        <div style={{ marginTop: '4px' }}>
-                          <span
-                            className="badge"
-                            style={{
-                              background: sourceBadge.bg,
-                              color: sourceBadge.color,
-                              border: `1px solid ${sourceBadge.border}`,
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              padding: '3px 8px',
-                              borderRadius: '12px',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
-                          >
-                            <span>{sourceBadge.icon}</span>
-                            <span>{sourceBadge.label}</span>
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Specifications or Description */}
-                    {displaySpecs && (
-                      <div
-                        style={{
-                          marginTop: '12px',
-                          padding: '8px 12px',
-                          borderRadius: '8px',
-                          background: '#ffffff',
-                          border: '1px solid var(--border)',
-                          fontSize: '12px',
-                          color: 'var(--text-muted)',
-                          lineHeight: 1.45,
-                        }}
-                      >
-                        <strong style={{ color: 'var(--text)', display: 'block', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '2px' }}>
-                          Specifications:
-                        </strong>
-                        <span style={{ color: 'var(--text)' }}>{displaySpecs}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Bottom: Attachments, Date, Added By */}
-                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {displayDocUrl && (
-                      <div>
-                        <a
-                          href={displayDocUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            fontSize: '12px',
-                            color: 'var(--accent)',
-                            textDecoration: 'none',
-                            fontWeight: 500,
-                          }}
-                        >
-                          <span>📄</span>
-                          <span>Reference Document ({displayDocName})</span>
-                        </a>
-                      </div>
-                    )}
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-faint)', flexWrap: 'wrap', gap: '4px' }}>
-                      <span>Added on {new Date(mat.createdAt).toLocaleDateString()}</span>
-                      {mat.addedBy?.name && (
-                        <span>by {mat.addedBy.name}</span>
+                          {SOURCE_LABEL[mat.source]}
+                        </span>
+                      </td>
+                      <td className="is-num">{mat.quantity}</td>
+                      <td>
+                        <p className="prj-mat__added">{mat.addedBy?.name || 'Unknown'}</p>
+                        <p className="prj-mat__date">
+                          {new Date(mat.createdAt).toLocaleDateString('en-GB', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                        </p>
+                      </td>
+                      {hasFiles && (
+                        <td>
+                          {displayDocUrl ? (
+                            <a
+                              className="prj-file-chip"
+                              href={displayDocUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={displayDocName}
+                            >
+                              <FileMark />
+                              Document
+                            </a>
+                          ) : (
+                            <span className="ui-meta">None</span>
+                          )}
+                        </td>
                       )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         ) : (
-          <div className="empty-state" style={{ padding: '36px 20px' }}>
-            <div style={{ fontSize: '32px', marginBottom: '8px' }}>📦</div>
-            <div style={{ fontWeight: 500, color: 'var(--text)' }}>
-              No {activeFilter !== 'all' ? activeFilter.replace('_', ' ') : ''} materials found
-            </div>
-            <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
-              {isTL
-                ? 'Use "+ Add Material" above to add self-purchased or owned items, or request items from Guitar inventory.'
-                : 'Project materials added or allocated to this project will appear here.'}
-            </div>
+          <div className="ui-empty prj-empty prj-empty--inset">
+            <span className="ui-empty__mark">
+              <BoxMark />
+            </span>
+            <p className="ui-empty__title">
+              {activeFilter === 'all'
+                ? 'No materials yet'
+                : `No ${SOURCE_LABEL[activeFilter as ProjectMaterialItem['source']].toLowerCase()} materials`}
+            </p>
+            <p className="ui-empty__text">
+              {isTL ? 'Add what the team bought or already owns.' : 'Materials added to this project appear here.'}
+            </p>
+            {isTL && (
+              <button type="button" className="ui-btn ui-btn--quiet ui-btn--sm" onClick={openModal}>
+                Add material
+              </button>
+            )}
           </div>
         )}
       </div>
 
-      {/* Add Material Modal for Team Leader */}
+      {/* Add material · team leader */}
       {isModalOpen && (
         <div
-          className="modal-overlay"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closeModal();
+          className="ui-overlay"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeModal();
           }}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="add-material-title"
         >
-          <div
-            className="modal-container"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Stable Header */}
-            <div className="modal-header">
+          <div className="ui-modal" role="dialog" aria-modal="true" aria-labelledby={`${fieldId}-title`}>
+            <header className="ui-modal__head">
               <div>
-                <h3 id="add-material-title" style={{ margin: 0, fontSize: '18px', color: 'var(--text)', fontWeight: 600 }}>
-                  Add Project Material
-                </h3>
-                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
-                  Record materials self-purchased or already owned by the team.
-                </p>
+                <h2 className="ui-h2" id={`${fieldId}-title`}>
+                  Add material
+                </h2>
               </div>
               <button
                 type="button"
+                className="ui-icon-btn"
                 onClick={closeModal}
                 disabled={submitting}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '20px',
-                  color: 'var(--text-muted)',
-                  cursor: 'pointer',
-                  padding: '6px 8px',
-                  borderRadius: '6px',
-                  lineHeight: 1,
-                }}
-                aria-label="Close modal"
+                aria-label="Close"
               >
-                ✕
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                </svg>
               </button>
-            </div>
+            </header>
 
-            {/* Form */}
-            <form onSubmit={handleAddSubmit} className="modal-form">
-              <div className="modal-body">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  {submitError && (
-                    <div
-                      style={{
-                        padding: '12px 16px',
-                        borderRadius: '8px',
-                        background: 'var(--danger-soft)',
-                        color: 'var(--danger)',
-                        border: '1px solid rgba(239, 68, 68, 0.25)',
-                        fontSize: '13px',
-                      }}
-                    >
-                      {submitError}
-                    </div>
-                  )}
-
-                  {submitSuccess && (
-                    <div
-                      style={{
-                        padding: '12px 16px',
-                        borderRadius: '8px',
-                        background: 'var(--success-soft)',
-                        color: 'var(--success)',
-                        border: '1px solid rgba(34, 197, 94, 0.25)',
-                        fontSize: '13px',
-                      }}
-                    >
-                      {submitSuccess}
-                    </div>
-                  )}
-
-                  {/* 1. Source Selector */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text)', marginBottom: '8px' }}>
-                      Material Source <span style={{ color: 'var(--danger)' }}>*</span>
-                    </label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      <label
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '10px',
-                          padding: '12px 14px',
-                          borderRadius: '10px',
-                          border: source === 'self_purchased' ? '2px solid #059669' : '1px solid var(--border)',
-                          background: source === 'self_purchased' ? 'rgba(16, 185, 129, 0.08)' : '#ffffff',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          name="source"
-                          value="self_purchased"
-                          checked={source === 'self_purchased'}
-                          onChange={() => setSource('self_purchased')}
-                          style={{ accentColor: '#059669' }}
-                        />
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>🛍️ Self-Purchased</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Bought by project team</div>
-                        </div>
-                      </label>
-
-                      <label
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '10px',
-                          padding: '12px 14px',
-                          borderRadius: '10px',
-                          border: source === 'owned' ? '2px solid #d97706' : '1px solid var(--border)',
-                          background: source === 'owned' ? 'rgba(245, 158, 11, 0.08)' : '#ffffff',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          name="source"
-                          value="owned"
-                          checked={source === 'owned'}
-                          onChange={() => setSource('owned')}
-                          style={{ accentColor: '#d97706' }}
-                        />
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>📦 Owned</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Already in team possession</div>
-                        </div>
-                      </label>
-                    </div>
-
-                    <div style={{ fontSize: '11px', color: 'var(--text-faint)', marginTop: '6px' }}>
-                      💡 Note: Materials from central Guitar Inventory must be requested via the Material Requests section below.
-                    </div>
+            <form onSubmit={handleAddSubmit}>
+              <div className="ui-modal__body ui-stack">
+                {submitError && (
+                  <div className="ui-notice ui-notice--error" role="alert">
+                    {submitError}
                   </div>
+                )}
+                {submitSuccess && (
+                  <div className="ui-notice prj-notice--ok" role="status">
+                    {submitSuccess}
+                  </div>
+                )}
 
-                  {/* 2. Material Name */}
+                <fieldset className="prj-fieldset">
+                  <legend className="ui-label">
+                    Source <span className="prj-required">required</span>
+                  </legend>
+                  <div className="prj-source-options">
+                    <label className={`prj-source-option${source === 'self_purchased' ? ' is-checked' : ''}`}>
+                      <input
+                        type="radio"
+                        name="source"
+                        value="self_purchased"
+                        checked={source === 'self_purchased'}
+                        onChange={() => setSource('self_purchased')}
+                      />
+                      <span className="prj-source-option__body">
+                        <span className="prj-source-option__title">Team bought</span>
+                        <span className="prj-source-option__text">Purchased by the project team</span>
+                      </span>
+                    </label>
+                    <label className={`prj-source-option${source === 'owned' ? ' is-checked' : ''}`}>
+                      <input
+                        type="radio"
+                        name="source"
+                        value="owned"
+                        checked={source === 'owned'}
+                        onChange={() => setSource('owned')}
+                      />
+                      <span className="prj-source-option__body">
+                        <span className="prj-source-option__title">Already owned</span>
+                        <span className="prj-source-option__text">Already in the team’s possession</span>
+                      </span>
+                    </label>
+                  </div>
+                  <p className="ui-hint">Central inventory comes through a material request.</p>
+                </fieldset>
+
+                <div className="ui-form-row ui-form-row--2">
                   <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text)', marginBottom: '8px' }}>
-                      Material Name <span style={{ color: 'var(--danger)' }}>*</span>
+                    <label className="ui-label" htmlFor={`${fieldId}-name`}>
+                      Material name
                     </label>
                     <input
+                      id={`${fieldId}-name`}
                       type="text"
-                      placeholder="e.g., PVC Pipe 20mm, Acrylic Sheet, Soldering Kit"
+                      className="ui-field"
+                      placeholder="e.g. PVC pipe 20mm"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       required
-                      style={{
-                        width: '100%',
-                        padding: '11px 14px',
-                        borderRadius: '8px',
-                        background: '#ffffff',
-                        color: 'var(--text)',
-                        border: '1px solid var(--border)',
-                        fontSize: '14px',
-                        outline: 'none',
-                        boxSizing: 'border-box',
-                      }}
+                      disabled={submitting}
                     />
                   </div>
-
-                  {/* 3. Quantity */}
                   <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text)', marginBottom: '8px' }}>
-                      Quantity <span style={{ color: 'var(--danger)' }}>*</span>
+                    <label className="ui-label" htmlFor={`${fieldId}-qty`}>
+                      Quantity
                     </label>
                     <input
+                      id={`${fieldId}-qty`}
                       type="number"
                       min="1"
+                      className="ui-field"
                       value={quantity}
                       onChange={(e) => setQuantity(e.target.value === '' ? '' : Math.max(1, Number(e.target.value)))}
                       required
-                      style={{
-                        width: '100%',
-                        padding: '11px 14px',
-                        borderRadius: '8px',
-                        background: '#ffffff',
-                        color: 'var(--text)',
-                        border: '1px solid var(--border)',
-                        fontSize: '14px',
-                        outline: 'none',
-                        boxSizing: 'border-box',
-                      }}
+                      disabled={submitting}
                     />
                   </div>
+                </div>
 
-                  {/* 4. Specifications or Description */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text)', marginBottom: '8px' }}>
-                      Specifications or Description (Optional)
-                    </label>
-                    <textarea
-                      rows={2}
-                      placeholder="e.g., 2-meter length, schedule 40 thickness, purchased from local hardware store"
-                      value={specifications}
-                      onChange={(e) => setSpecifications(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '11px 14px',
-                        borderRadius: '8px',
-                        background: '#ffffff',
-                        color: 'var(--text)',
-                        border: '1px solid var(--border)',
-                        fontSize: '14px',
-                        outline: 'none',
-                        resize: 'vertical',
-                        lineHeight: 1.5,
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
+                <div>
+                  <label className="ui-label" htmlFor={`${fieldId}-specs`}>
+                    Specifications <span className="prj-label__hint">optional</span>
+                  </label>
+                  <textarea
+                    id={`${fieldId}-specs`}
+                    className="ui-field ui-field--area"
+                    rows={2}
+                    placeholder="Size, rating, where it was bought"
+                    value={specifications}
+                    onChange={(e) => setSpecifications(e.target.value)}
+                    disabled={submitting}
+                  />
+                </div>
 
-                  {/* 5. Reference Photo Upload */}
+                <div className="ui-form-row ui-form-row--2">
                   <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text)', marginBottom: '4px' }}>
-                      Material Photo (Optional)
+                    <label className="ui-label" htmlFor={`${fieldId}-photo`}>
+                      Photo <span className="prj-label__hint">optional</span>
                     </label>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                      Upload a photo of the item or receipt (JPG, PNG, WEBP up to 5MB).
-                    </div>
                     <input
+                      id={`${fieldId}-photo`}
                       type="file"
+                      className="prj-file"
                       accept="image/jpeg,image/png,image/webp"
                       onChange={handleImageChange}
-                      style={{ fontSize: '13px', color: 'var(--text)', width: '100%' }}
+                      disabled={submitting}
                     />
                     {imagePreview && (
-                      <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '14px' }}>
-                        <img
-                          src={imagePreview}
-                          alt="Material Preview"
-                          style={{ width: '64px', height: '64px', borderRadius: '8px', objectFit: 'cover', border: '1px solid #cbd5e1' }}
-                        />
+                      <div className="prj-attach">
+                        <img src={imagePreview} alt="Material preview" />
                         <button
                           type="button"
-                          className="btn btn-sm btn-outline"
+                          className="ui-btn ui-btn--ghost ui-btn--sm"
                           onClick={() => {
                             setImageFile(null);
                             setImagePreview(null);
                           }}
-                          style={{ fontSize: '12px', padding: '4px 10px' }}
                         >
-                          Remove Photo
+                          Remove
                         </button>
                       </div>
                     )}
                   </div>
-
-                  {/* 6. Reference Document Upload */}
                   <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text)', marginBottom: '4px' }}>
-                      Reference Document (Optional)
+                    <label className="ui-label" htmlFor={`${fieldId}-doc`}>
+                      Document <span className="prj-label__hint">optional</span>
                     </label>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                      Invoice, receipt, or technical manual (PDF, DOC, DOCX up to 10MB).
-                    </div>
                     <input
+                      id={`${fieldId}-doc`}
                       type="file"
+                      className="prj-file"
                       accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                       onChange={handleDocumentChange}
-                      style={{ fontSize: '13px', color: 'var(--text)', width: '100%' }}
+                      disabled={submitting}
                     />
                     {documentFile && (
-                      <div
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          marginTop: '6px',
-                          padding: '4px 10px',
-                          borderRadius: '6px',
-                          background: '#f1f5f9',
-                          border: '1px solid #cbd5e1',
-                          fontSize: '12px',
-                          color: 'var(--text)',
-                        }}
-                      >
-                        <span>📄 {documentFile.name} ({(documentFile.size / 1024).toFixed(1)} KB)</span>
-                        <button
-                          type="button"
-                          onClick={() => setDocumentFile(null)}
-                          style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
-                          title="Remove file"
-                        >
-                          ✕
+                      <div className="prj-file-chip prj-file-chip--selected">
+                        <FileMark />
+                        <span className="ui-truncate">{documentFile.name}</span>
+                        <span className="ui-meta">{(documentFile.size / 1024).toFixed(1)} KB</span>
+                        <button type="button" className="ui-icon-btn" onClick={() => setDocumentFile(null)} aria-label="Remove document">
+                          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                          </svg>
                         </button>
                       </div>
                     )}
@@ -833,30 +621,22 @@ export function ProjectMaterials({ projectId, isTL = false }: ProjectMaterialsPr
                 </div>
               </div>
 
-              {/* Stable Footer */}
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  onClick={closeModal}
-                  disabled={submitting}
-                  style={{ minWidth: '100px' }}
-                >
+              <footer className="ui-modal__foot">
+                <button type="button" className="ui-btn ui-btn--ghost" onClick={closeModal} disabled={submitting}>
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="btn btn-primary"
+                  className="ui-btn ui-btn--primary"
                   disabled={submitting || !name.trim() || Number(quantity) < 1}
-                  style={{ minWidth: '150px' }}
                 >
-                  {submitting ? 'Adding...' : 'Add Material'}
+                  {submitting ? 'Adding…' : 'Add material'}
                 </button>
-              </div>
+              </footer>
             </form>
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }

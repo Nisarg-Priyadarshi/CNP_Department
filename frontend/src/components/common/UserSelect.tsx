@@ -1,5 +1,9 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useId, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../../services/api';
+import { KindGlyph } from '../ui/vis';
+import { initialsOf, roleKind, roleLabel } from '../../pages/Profile/labels';
+import '../../pages/Profile/profile.css';
 
 export interface UserOption {
   _id: string;
@@ -45,6 +49,30 @@ const ROLE_DEFAULTS: Record<UserSelectProps['role'], { placeholder: string; empt
 
 const FALLBACK_DEFAULTS = { placeholder: 'Search users...', emptyMessage: 'No users found' };
 
+function personMeta(user: UserOption) {
+  return [
+    user.enrollmentNumber ? `Enrollment: ${user.enrollmentNumber}` : '',
+    user.department || '',
+    user.semester ? `Semester ${user.semester}` : '',
+  ].filter(Boolean) as string[];
+}
+
+/** One line for the row: the facts you scan by, not the ones you look up. */
+function personLine(user: UserOption) {
+  return [
+    user.email,
+    user.department || '',
+    user.semester ? `Sem ${user.semester}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** The full record, kept on hover for the fields the row has no space for. */
+function personTitle(user: UserOption) {
+  return [user.email, ...personMeta(user)].filter(Boolean).join(' · ');
+}
+
 export function UserSelect({
   role,
   value,
@@ -64,10 +92,20 @@ export function UserSelect({
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [menuPlacement, setMenuPlacement] = useState<{
+    left: number;
+    top?: number;
+    bottom?: number;
+    width: number;
+    listMax: number;
+  } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
 
   const { placeholder: defaultPlaceholder, emptyMessage: defaultEmptyMessage } =
     ROLE_DEFAULTS[role] ?? FALLBACK_DEFAULTS;
@@ -112,14 +150,73 @@ export function UserSelect({
   // Close dropdown on outside click
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-        setSearchTerm('');
-      }
+      const target = e.target as Node;
+      if (containerRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setIsOpen(false);
+      setSearchTerm('');
     };
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
+
+  // The menu is portalled, so its geometry is recalculated from the trigger.
+  // Any scroll outside the menu (page or modal) closes it rather than letting
+  // it drift away from the control.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleScroll = (event: Event) => {
+      if (menuRef.current && event.target instanceof Node && menuRef.current.contains(event.target)) return;
+      setIsOpen(false);
+      setSearchTerm('');
+    };
+    const handleResize = () => {
+      setIsOpen(false);
+      setSearchTerm('');
+    };
+
+    window.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [isOpen]);
+
+  // Keep the highlighted option inside the scroll area as the keyboard moves
+  useEffect(() => {
+    if (!isOpen) return;
+    const node = listRef.current?.querySelector<HTMLElement>('[data-highlighted="true"]');
+    node?.scrollIntoView({ block: 'nearest' });
+  }, [highlightedIndex, isOpen]);
+
+  const closeMenu = () => {
+    setIsOpen(false);
+    setSearchTerm('');
+  };
+
+  const openMenu = () => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const placeAbove = spaceBelow < 240 && spaceAbove > spaceBelow;
+    const available = Math.max(160, (placeAbove ? spaceAbove : spaceBelow) - 12);
+
+    setMenuPlacement({
+      left: rect.left,
+      width: rect.width,
+      ...(placeAbove
+        ? { bottom: window.innerHeight - rect.top + 4 }
+        : { top: rect.bottom + 4 }),
+      listMax: Math.max(120, Math.min(260, available - 56)),
+    });
+    setIsOpen(true);
+    window.setTimeout(() => inputRef.current?.focus(), 30);
+  };
 
   const handleSelect = (user: UserOption) => {
     const isDisabled = disabledUserIds.includes(user._id);
@@ -127,6 +224,7 @@ export function UserSelect({
     onChange(user._id, user);
     setIsOpen(false);
     setSearchTerm('');
+    triggerRef.current?.focus();
   };
 
   const handleClear = (e: React.MouseEvent) => {
@@ -134,14 +232,15 @@ export function UserSelect({
     onChange('', null);
     setSearchTerm('');
     if (inputRef.current) inputRef.current.focus();
+    else triggerRef.current?.focus();
   };
 
   // Keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!isOpen) {
-      if (e.key === 'ArrowDown' || e.key === 'Enter') {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        setIsOpen(true);
+        openMenu();
       }
       return;
     }
@@ -159,7 +258,9 @@ export function UserSelect({
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      setIsOpen(false);
+      e.stopPropagation();
+      closeMenu();
+      triggerRef.current?.focus();
     }
   };
 
@@ -171,232 +272,144 @@ export function UserSelect({
   };
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
+    <div ref={containerRef} className="prf-usel">
       {label && (
-        <label
-          htmlFor={id}
-          style={{
-            display: 'block',
-            marginBottom: '6px',
-            fontSize: '13px',
-            fontWeight: 500,
-            color: 'var(--text-muted)',
-          }}
-        >
-          {label} {required && <span style={{ color: 'var(--danger)' }}>*</span>}
+        <label className="ui-label" htmlFor={id}>
+          {label} {required && <span className="prf-req" aria-hidden="true">*</span>}
         </label>
       )}
 
-      {/* Main Trigger Box */}
-      <div
-        id={id}
-        tabIndex={disabled ? -1 : 0}
-        onClick={() => {
-          if (!disabled) {
-            setIsOpen((prev) => !prev);
-            setTimeout(() => inputRef.current?.focus(), 50);
-          }
-        }}
-        onKeyDown={handleKeyDown}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          minHeight: '44px',
-          padding: '6px 12px',
-          borderRadius: '8px',
-          border: `1px solid ${isOpen ? 'var(--primary)' : 'var(--border)'}`,
-          background: 'var(--bg)',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          opacity: disabled ? 0.6 : 1,
-          boxShadow: isOpen ? '0 0 0 2px rgba(var(--primary-rgb), 0.15)' : 'none',
-          transition: 'all 0.15s ease',
-        }}
-      >
-        {selectedUser ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
-            {/* Avatar */}
-            {selectedUser.profileImage ? (
-              <img
-                src={selectedUser.profileImage}
-                alt={selectedUser.name}
-                style={{
-                  width: '28px',
-                  height: '28px',
-                  borderRadius: '50%',
-                  objectFit: 'cover',
-                  flexShrink: 0,
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: '28px',
-                  height: '28px',
-                  borderRadius: '50%',
-                  background: 'var(--accent-glow)',
-                  color: 'var(--accent)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 700,
-                  fontSize: '12px',
-                  flexShrink: 0,
-                }}
-              >
-                {selectedUser.name.charAt(0).toUpperCase()}
-              </div>
-            )}
-
-            {/* User Meta */}
-            <div style={{ flex: 1, minWidth: 0, lineHeight: 1.2 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontWeight: 600, color: 'var(--text)', fontSize: '13px' }}>
-                  {selectedUser.name}
-                </span>
-                <span style={{ color: 'var(--text-faint)', fontSize: '12px' }}>
-                  ({selectedUser.email})
-                </span>
-              </div>
-              {(selectedUser.department || selectedUser.semester || selectedUser.enrollmentNumber) && (
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  {selectedUser.enrollmentNumber && <span>Enrollment: {selectedUser.enrollmentNumber}</span>}
-                  {selectedUser.enrollmentNumber && (selectedUser.department || selectedUser.semester) && <span> &middot; </span>}
-                  {selectedUser.department && <span>{selectedUser.department}</span>}
-                  {selectedUser.department && selectedUser.semester && <span> &middot; </span>}
-                  {selectedUser.semester && <span>Semester {selectedUser.semester}</span>}
-                </div>
-              )}
-            </div>
-
-            {/* Clear Button */}
-            <button
-              type="button"
-              onClick={handleClear}
-              title="Clear selection"
-              style={{
-                border: 'none',
-                background: 'transparent',
-                color: 'var(--text-faint)',
-                cursor: 'pointer',
-                padding: '4px 8px',
-                fontSize: '14px',
-                borderRadius: '4px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              ✕
-            </button>
-          </div>
-        ) : (
-          <span style={{ color: 'var(--text-faint)', fontSize: '13px' }}>
-            {placeholder || defaultPlaceholder}
-          </span>
-        )}
-
-        <span
-          style={{
-            color: 'var(--text-faint)',
-            fontSize: '10px',
-            transform: isOpen ? 'rotate(180deg)' : 'none',
-            transition: 'transform 0.15s ease',
-            marginLeft: '8px',
+      <div className="prf-usel__control">
+        <button
+          id={id}
+          ref={triggerRef}
+          type="button"
+          className={`ui-field prf-usel__trigger${selectedUser && !disabled ? ' prf-usel__trigger--clearable' : ''}`}
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+          aria-controls={isOpen ? listId : undefined}
+          disabled={disabled}
+          onClick={() => {
+            if (isOpen) closeMenu();
+            else openMenu();
           }}
+          onKeyDown={handleKeyDown}
         >
-          ▼
-        </span>
+          {selectedUser ? (
+            <>
+              <span className="ui-avatar ui-avatar--sm" aria-hidden="true">
+                {selectedUser.profileImage ? (
+                  <img src={selectedUser.profileImage} alt="" />
+                ) : (
+                  initialsOf(selectedUser.name)
+                )}
+              </span>
+              <span className="prf-usel__text">
+                <span className="prf-usel__head">
+                  <span className="prf-usel__name">{selectedUser.name}</span>
+                  {selectedUser.role && (
+                    <span className="ui-tag ui-tag--plain prf-usel__role">
+                      <KindGlyph kind={roleKind(selectedUser.role)} size={11} />
+                      {roleLabel(selectedUser.role)}
+                    </span>
+                  )}
+                </span>
+                <span className="prf-usel__sub" title={personTitle(selectedUser)}>
+                  {personLine(selectedUser)}
+                </span>
+              </span>
+            </>
+          ) : (
+            <span className="prf-usel__placeholder">{placeholder || defaultPlaceholder}</span>
+          )}
+
+          <ChevronIcon />
+        </button>
+
+        {selectedUser && !disabled && (
+          <button
+            type="button"
+            className="ui-icon-btn prf-usel__clear"
+            onClick={handleClear}
+            title="Clear selection"
+            aria-label="Clear selection"
+          >
+            <CloseIcon />
+          </button>
+        )}
       </div>
 
-      {/* Dropdown Popover */}
-      {isOpen && !disabled && (
+      {isOpen && !disabled && menuPlacement && createPortal(
         <div
-          ref={listRef}
+          ref={menuRef}
+          className="ui-menu prf-usel__menu"
+          aria-busy={loading}
           style={{
-            position: 'absolute',
-            top: 'calc(100% + 4px)',
-            left: 0,
-            right: 0,
-            zIndex: 1000,
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border)',
-            borderRadius: '10px',
-            boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
-            overflow: 'hidden',
+            left: menuPlacement.left,
+            top: menuPlacement.top,
+            bottom: menuPlacement.bottom,
+            width: menuPlacement.width,
           }}
         >
-          {/* Search Box Header */}
-          <div
-            style={{
-              padding: '8px 10px',
-              borderBottom: '1px solid var(--border)',
-              background: 'var(--bg-card-2)',
-            }}
-          >
+          <div className="ui-search prf-usel__search">
+            <SearchIcon />
             <input
               ref={inputRef}
+              className="ui-field"
               type="text"
-              className="input"
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
                 setHighlightedIndex(0);
               }}
               onKeyDown={handleKeyDown}
-              placeholder="Type to filter by name, email, department..."
-              style={{
-                width: '100%',
-                padding: '8px 10px',
-                fontSize: '12px',
-                borderRadius: '6px',
-                background: 'var(--bg)',
-                border: '1px solid var(--border)',
-              }}
+              placeholder="Filter by name, email or department"
+              aria-label="Filter users"
+              aria-controls={listId}
+              aria-activedescendant={
+                highlightedIndex >= 0 && highlightedIndex < filteredUsers.length
+                  ? `${listId}-option-${highlightedIndex}`
+                  : undefined
+              }
               autoFocus
             />
           </div>
 
-          {/* Options List */}
-          <div
-            style={{
-              maxHeight: '260px',
-              overflowY: 'auto',
-              padding: '4px',
-            }}
-          >
-            {loading ? (
-              <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
-                <div className="spinner" style={{ width: '20px', height: '20px', margin: '0 auto 8px' }}></div>
-                Loading registered users...
-              </div>
-            ) : error ? (
-              <div style={{ padding: '14px', textAlign: 'center', color: 'var(--danger)', fontSize: '12px' }}>
-                <p style={{ margin: '0 0 8px 0' }}>{error}</p>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline"
-                  onClick={loadUsers}
-                  style={{ fontSize: '11px', padding: '4px 10px' }}
-                >
-                  Retry
-                </button>
-              </div>
-            ) : filteredUsers.length === 0 ? (
-              <div
-                style={{
-                  padding: '20px 14px',
-                  textAlign: 'center',
-                  color: 'var(--text-faint)',
-                  fontSize: '13px',
-                }}
-              >
-                {searchTerm.trim()
-                  ? `No registered ${role.replace('_', ' ')}s matching "${searchTerm}"`
-                  : emptyMessage || defaultEmptyMessage}
-              </div>
-            ) : (
-              filteredUsers.map((user, idx) => {
+          {loading ? (
+            <div className="prf-usel__skeleton" aria-label="Loading registered users">
+              {[0, 1, 2].map(row => (
+                <div className="prf-usel__skeleton-row" key={row}>
+                  <span className="ui-skel prf-usel__skeleton-avatar" />
+                  <span className="prf-usel__skeleton-lines">
+                    <span className="ui-skel prf-usel__skeleton-line" />
+                    <span className="ui-skel prf-usel__skeleton-line prf-usel__skeleton-line--short" />
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : error ? (
+            <div className="ui-notice ui-notice--error prf-usel__notice">
+              <span>{error}</span>
+              <button type="button" className="ui-btn ui-btn--quiet ui-btn--sm" onClick={loadUsers}>
+                Retry
+              </button>
+            </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="prf-usel__state" aria-live="polite">
+              {searchTerm.trim()
+                ? `No registered ${role.replace('_', ' ')}s matching "${searchTerm}"`
+                : emptyMessage || defaultEmptyMessage}
+            </div>
+          ) : (
+            <div
+              ref={listRef}
+              id={listId}
+              className="prf-usel__list"
+              role="listbox"
+              aria-label={label ? `${label} options` : 'Options'}
+              style={{ maxHeight: menuPlacement.listMax }}
+            >
+              {filteredUsers.map((user, idx) => {
                 const isAssigned = disabledUserIds.includes(user._id);
                 const isSelected = user._id === value;
                 const isHighlighted = idx === highlightedIndex;
@@ -404,124 +417,83 @@ export function UserSelect({
                 return (
                   <div
                     key={user._id}
+                    id={`${listId}-option-${idx}`}
+                    role="option"
+                    aria-selected={isSelected}
+                    aria-disabled={isAssigned}
+                    data-selected={isSelected || undefined}
+                    data-disabled={isAssigned || undefined}
+                    data-highlighted={isHighlighted || undefined}
+                    className="prf-usel__option"
                     onClick={() => handleSelect(user)}
                     onMouseEnter={() => setHighlightedIndex(idx)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      cursor: isAssigned ? 'not-allowed' : 'pointer',
-                      background: isSelected
-                        ? 'rgba(var(--primary-rgb), 0.12)'
-                        : isHighlighted && !isAssigned
-                        ? 'var(--surface)'
-                        : 'transparent',
-                      opacity: isAssigned ? 0.6 : 1,
-                      border: isSelected ? '1px solid var(--primary-soft)' : '1px solid transparent',
-                      transition: 'background 0.1s ease',
-                      marginBottom: '2px',
-                    }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
-                      {/* Avatar */}
-                      {user.profileImage ? (
-                        <img
-                          src={user.profileImage}
-                          alt={user.name}
-                          style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '50%',
-                            objectFit: 'cover',
-                            flexShrink: 0,
-                          }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '50%',
-                            background: isAssigned ? 'var(--border)' : 'var(--accent-glow)',
-                            color: isAssigned ? 'var(--text-muted)' : 'var(--accent)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontWeight: 700,
-                            fontSize: '13px',
-                            flexShrink: 0,
-                          }}
-                        >
-                          {user.name.charAt(0).toUpperCase()}
-                        </div>
-                      )}
+                    <span className="ui-avatar ui-avatar--sm" aria-hidden="true">
+                      {user.profileImage ? <img src={user.profileImage} alt="" /> : initialsOf(user.name)}
+                    </span>
 
-                      {/* Info */}
-                      <div style={{ minWidth: 0, flex: 1, lineHeight: 1.3 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                          <span
-                            style={{
-                              fontWeight: 600,
-                              fontSize: '13px',
-                              color: isAssigned ? 'var(--text-muted)' : 'var(--text)',
-                            }}
-                          >
-                            {user.name}
+                    <span className="prf-usel__option-text">
+                      <span className="prf-usel__head">
+                        <span className="prf-usel__name">{user.name}</span>
+                        {user.role && (
+                          <span className="ui-tag ui-tag--plain prf-usel__role">
+                            <KindGlyph kind={roleKind(user.role)} size={11} />
+                            {roleLabel(user.role)}
                           </span>
-                          <span style={{ fontSize: '11px', color: 'var(--text-faint)' }}>
-                            {user.email}
-                          </span>
-                        </div>
-                        {(user.department || user.semester || user.enrollmentNumber) && (
-                          <div style={{ fontSize: '11px', color: 'var(--text-faint)', marginTop: '2px' }}>
-                            {user.enrollmentNumber && <span>Enrollment: {user.enrollmentNumber}</span>}
-                            {user.enrollmentNumber && (user.department || user.semester) && <span> &middot; </span>}
-                            {user.department && <span>{user.department}</span>}
-                            {user.department && user.semester && <span> &middot; </span>}
-                            {user.semester && <span>Semester {user.semester}</span>}
-                          </div>
                         )}
-                      </div>
-                    </div>
+                      </span>
+                      <span className="prf-usel__sub" title={personTitle(user)}>
+                        {personLine(user)}
+                      </span>
+                    </span>
 
-                    {/* Status Badge */}
                     {isAssigned ? (
-                      <span
-                        className="badge"
-                        style={{
-                          fontSize: '10px',
-                          padding: '3px 8px',
-                          background: 'var(--border)',
-                          color: 'var(--text-muted)',
-                          borderRadius: '6px',
-                          whiteSpace: 'nowrap',
-                          marginLeft: '8px',
-                        }}
-                      >
-                        {getDisabledText(user)}
-                      </span>
+                      <span className="ui-tag ui-tag--plain">{getDisabledText(user)}</span>
                     ) : isSelected ? (
-                      <span
-                        style={{
-                          color: 'var(--primary)',
-                          fontWeight: 700,
-                          fontSize: '13px',
-                          marginLeft: '8px',
-                        }}
-                      >
-                        ✓
-                      </span>
+                      <CheckIcon />
                     ) : null}
                   </div>
                 );
-              })
-            )}
-          </div>
-        </div>
+              })}
+            </div>
+          )}
+        </div>,
+        document.body,
       )}
     </div>
+  );
+}
+
+function ChevronIcon() {
+  return (
+    <svg className="prf-usel__chevron" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="11" cy="11" r="6.4" stroke="currentColor" strokeWidth="1.7" />
+      <path d="m16 16 3.6 3.6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg className="prf-usel__check" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 

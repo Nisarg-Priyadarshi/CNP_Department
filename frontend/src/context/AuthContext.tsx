@@ -1,5 +1,5 @@
 import { type ReactNode, createContext, useContext, useState, useEffect } from 'react';
-import { api, getStoredToken } from '../services/api';
+import { api, getStoredToken, UNAUTHORIZED_EVENT } from '../services/api';
 import type { User } from '../types';
 
 interface AuthContextType {
@@ -51,6 +51,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
     initAuth();
+  }, []);
+
+  /* The API client clears the token on a 401 and fires this. One listener here
+     turns an expired session into a clean sign-out instead of a dead shell. */
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setToken(null);
+      setUser(null);
+      setLoading(false);
+    };
+    window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
   }, []);
 
   const login = (newToken: string, newUser: User) => {

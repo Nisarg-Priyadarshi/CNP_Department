@@ -1,18 +1,55 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../services/api';
-import { UserDisplay } from '../UserDisplay';
+import { RoleMark } from './RoleMark';
+import '../../pages/Clubs/clubs.css';
 
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
+}
+
+const MailIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <rect x="3.5" y="5.5" width="17" height="13" rx="2" stroke="currentColor" strokeWidth="1.7" />
+    <path d="m4.5 7 7.5 6 7.5-6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+  </svg>
+);
+
+/**
+ * A member as a ruled entry: a face, a name, one meta line, a role mark, and the
+ * actions that only exist while the row is being looked at. The email is an
+ * action, not a line of text.
+ */
 export function MemberItem({ m, clubId, canManage, onRefresh }: { m: any, clubId: string, canManage: boolean, onRefresh: () => void }) {
   const [isEditing, setIsEditing] = useState(false);
   const [membershipType, setMembershipType] = useState(m.membershipType);
   const [position, setPosition] = useState(m.position || '');
   const [loading, setLoading] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
+  const student = m.studentId || {};
+  const isCoreTeam = m.membershipType === 'core_team';
+  const shownPosition = isCoreTeam && m.position && m.position.toLowerCase() !== 'member' ? m.position : null;
+
+  useEffect(() => {
+    if (!confirming) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setConfirming(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [confirming]);
 
   const handleRemove = async () => {
-    if (!window.confirm(`Are you sure you want to remove ${m.studentId.name} from the club?`)) return;
     try {
       setLoading(true);
       await api('DELETE', `/clubs/${clubId}/members/${m.studentId._id}`);
+      setConfirming(false);
       onRefresh();
       alert('Member removed successfully');
     } catch (e: any) {
@@ -42,63 +79,143 @@ export function MemberItem({ m, clubId, canManage, onRefresh }: { m: any, clubId
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '16px' }}>
-        {m.studentId.profileImage ? (
-          <img src={m.studentId.profileImage} style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} />
-        ) : (
-          <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--accent-glow)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
-            {m.studentId.name.charAt(0)}
-          </div>
-        )}
-        
-        {isEditing ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
-            <UserDisplay user={m.studentId} showEmail={false} />
-            <select className="input" value={membershipType} onChange={e => setMembershipType(e.target.value)} disabled={loading} style={{ padding: '6px', fontSize: '13px' }}>
-              <option value="member">Member</option>
-              <option value="core_team">Core Team</option>
-            </select>
+    <div className={`clubs-member${isEditing ? ' is-editing' : ''}`}>
+      {student.profileImage ? (
+        <img src={student.profileImage} alt="" className="ui-avatar clubs-member__face" />
+      ) : (
+        <span className="ui-avatar clubs-member__face" aria-hidden="true">{initials(student.name || '?')}</span>
+      )}
+
+      <div className="clubs-member__id">
+        <div className="clubs-member__name">{student.name || 'Unknown member'}</div>
+        <div className="clubs-member__sub">
+          {student.department || 'Student'}
+          {student.semester ? ` · Semester ${student.semester}` : ''}
+        </div>
+      </div>
+
+      {isEditing ? (
+        <form
+          className="clubs-member__form"
+          onSubmit={(e) => { e.preventDefault(); handleSave(); }}
+        >
+          <div className="clubs-member__form-row">
+            <label className="ui-visually-hidden" htmlFor={`member-type-${m._id}`}>Membership type</label>
+            <span className="clubs-select">
+              <select
+                id={`member-type-${m._id}`}
+                className="ui-field ui-field--select"
+                value={membershipType}
+                onChange={e => setMembershipType(e.target.value)}
+                disabled={loading}
+              >
+                <option value="member">Member</option>
+                <option value="core_team">Core team</option>
+              </select>
+            </span>
+
             {membershipType === 'core_team' && (
-              <input 
-                type="text" 
-                className="input"
-                placeholder="Position (e.g. President)" 
-                value={position} 
-                onChange={e => setPosition(e.target.value)} 
-                disabled={loading} 
-                style={{ padding: '6px', fontSize: '13px' }}
-              />
+              <>
+                <label className="ui-visually-hidden" htmlFor={`member-position-${m._id}`}>Position</label>
+                <input
+                  id={`member-position-${m._id}`}
+                  type="text"
+                  className="ui-field"
+                  placeholder="Position, e.g. President"
+                  value={position}
+                  onChange={e => setPosition(e.target.value)}
+                  disabled={loading}
+                />
+              </>
             )}
-            <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-              <button className="btn btn-sm btn-primary" onClick={handleSave} disabled={loading} style={{ flex: 1 }}>Save</button>
-              <button className="btn btn-sm btn-outline" onClick={() => {
+          </div>
+
+          <div className="clubs-member__form-row">
+            <button type="submit" className="ui-btn ui-btn--primary ui-btn--sm" disabled={loading}>
+              {loading ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              type="button"
+              className="ui-btn ui-btn--ghost ui-btn--sm"
+              onClick={() => {
                 setIsEditing(false);
                 setMembershipType(m.membershipType);
                 setPosition(m.position || '');
-              }} disabled={loading} style={{ flex: 1 }}>Cancel</button>
+              }}
+              disabled={loading}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : (
+        <>
+          {shownPosition ? <span className="clubs-member__pos">{shownPosition}</span> : null}
+
+          <RoleMark
+            role={isCoreTeam ? 'core' : 'member'}
+            label={isCoreTeam ? (shownPosition ? `Core team · ${shownPosition}` : 'Core team') : 'Member'}
+            size={18}
+            className="clubs-member__role"
+          />
+
+          <div className="clubs-member__actions">
+            {student.email ? (
+              <a
+                className="ui-icon-btn clubs-member__mail"
+                href={`mailto:${student.email}`}
+                aria-label={`Email ${student.name || 'member'}`}
+              >
+                <MailIcon />
+              </a>
+            ) : null}
+            {canManage ? (
+              <>
+                <button type="button" className="ui-btn ui-btn--quiet ui-btn--sm" onClick={() => setIsEditing(true)}>
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="ui-btn ui-btn--ghost ui-btn--sm clubs-member__remove"
+                  onClick={() => setConfirming(true)}
+                >
+                  Remove
+                </button>
+              </>
+            ) : null}
+          </div>
+        </>
+      )}
+
+      {confirming && (
+        <div
+          className="ui-overlay"
+          onMouseDown={(e) => { if (e.target === e.currentTarget && !loading) setConfirming(false); }}
+        >
+          <div className="ui-modal ui-modal--narrow" role="dialog" aria-modal="true" aria-labelledby="clubs-remove-title">
+            <div className="ui-modal__head">
+              <h2 id="clubs-remove-title" className="ui-panel__title">Remove member</h2>
+              <button type="button" className="ui-icon-btn" onClick={() => setConfirming(false)} disabled={loading} aria-label="Close">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+            <div className="ui-modal__body">
+              <p className="clubs-modal__danger-text">
+                <strong>{student.name || 'This member'}</strong> will lose access to the club and its events. You can
+                add them again later from the club page.
+              </p>
+            </div>
+            <div className="ui-modal__foot">
+              <button type="button" className="ui-btn ui-btn--ghost" onClick={() => setConfirming(false)} disabled={loading}>
+                Keep member
+              </button>
+              <button type="button" className="ui-btn ui-btn--danger" onClick={handleRemove} disabled={loading}>
+                {loading ? 'Removing…' : 'Remove member'}
+              </button>
             </div>
           </div>
-        ) : (
-          <div style={{ flex: 1 }}>
-            <UserDisplay user={m.studentId} showEmail={false} />
-            <div style={{ marginTop: '4px' }}>
-              {m.membershipType === 'core_team' ? (
-                <span className="badge" style={{ background: 'var(--warn-glow)', color: 'var(--warn)', border: '1px solid rgba(var(--warn-rgb), 0.2)', fontSize: '11px', whiteSpace: 'normal', display: 'inline-block', lineHeight: 1.2 }}>
-                  Core Team • {m.position || '-'}
-                </span>
-              ) : (
-                <span className="badge badge-student" style={{ background: 'var(--bg)', color: 'var(--text-faint)', border: '1px solid var(--border)', fontSize: '11px' }}>Member</span>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-      
-      {canManage && !isEditing && (
-        <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
-          <button className="btn btn-sm btn-outline" style={{ flex: 1 }} onClick={() => setIsEditing(true)}>Edit</button>
-          <button className="btn btn-sm btn-outline" style={{ flex: 1, color: 'var(--danger)', borderColor: 'var(--danger-soft)', background: 'var(--danger-soft)' }} onClick={handleRemove}>Remove</button>
         </div>
       )}
     </div>

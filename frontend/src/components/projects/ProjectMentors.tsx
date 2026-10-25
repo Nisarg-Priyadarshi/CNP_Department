@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { UserDisplay } from '../UserDisplay';
 import { UserSelect } from '../UserSelect';
+import { Counter } from '../ui/vis';
 
 interface ProjectMentorsProps {
   projectId: string;
   mentors?: any[];
   onMentorsChange?: (mentors: any[]) => void;
+}
+
+function initialOf(name?: string): string {
+  return (name || '?').replace(/^Dr\.\s*/i, '').trim().charAt(0).toUpperCase() || '?';
 }
 
 export function ProjectMentors({ projectId, mentors: propMentors, onMentorsChange }: ProjectMentorsProps) {
@@ -16,6 +20,7 @@ export function ProjectMentors({ projectId, mentors: propMentors, onMentorsChang
   const [loading, setLoading] = useState(!propMentors);
   const [error, setError] = useState('');
   const [selectedMentorId, setSelectedMentorId] = useState('');
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     if (propMentors) {
@@ -26,12 +31,12 @@ export function ProjectMentors({ projectId, mentors: propMentors, onMentorsChang
 
   const loadMentors = () => {
     api<any>('GET', `/projects/${projectId}/mentors`)
-      .then(res => {
+      .then((res) => {
         const data = res.data || [];
         setMentors(data);
         onMentorsChange?.(data);
       })
-      .catch(err => {
+      .catch((err) => {
         if (err.status !== 403) setError(err.message || 'Failed to load mentors');
       })
       .finally(() => setLoading(false));
@@ -46,6 +51,7 @@ export function ProjectMentors({ projectId, mentors: propMentors, onMentorsChang
   const handleAddMentor = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMentorId) return;
+    setAdding(true);
     try {
       await api('POST', `/projects/${projectId}/mentors`, { mentorId: selectedMentorId });
       setSelectedMentorId('');
@@ -53,6 +59,8 @@ export function ProjectMentors({ projectId, mentors: propMentors, onMentorsChang
       alert('Mentor assigned successfully');
     } catch (e: any) {
       alert(e.message || 'Failed to add mentor');
+    } finally {
+      setAdding(false);
     }
   };
 
@@ -75,77 +83,129 @@ export function ProjectMentors({ projectId, mentors: propMentors, onMentorsChang
     }
   };
 
-  if (loading) return <div className="spinner"></div>;
-  if (error) return <div style={{ color: 'var(--danger)', padding: '16px', background: 'var(--danger-soft)', borderRadius: '8px', border: '1px solid rgba(var(--danger-rgb), 0.2)' }}>{error}</div>;
+  const isAdmin = user?.role === 'project_admin';
+
+  if (error) {
+    return (
+      <div className="ui-notice ui-notice--error" role="alert">
+        <span>{error}</span>
+        <button type="button" className="ui-btn ui-btn--quiet ui-btn--sm" onClick={() => { setError(''); setLoading(true); loadMentors(); }}>
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="card" style={{ marginBottom: '24px' }}>
-      <h3 className="card-title" style={{ marginBottom: '20px' }}>Project Mentors</h3>
-      <div className="card-body" style={{ padding: 0 }}>
-        
-        {user?.role === 'project_admin' && (
-          <form onSubmit={handleAddMentor} style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px', background: 'var(--bg-card-2)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: '280px' }}>
-                <UserSelect
-                  role="faculty_mentor"
-                  value={selectedMentorId}
-                  onChange={setSelectedMentorId}
-                  placeholder="Search and select faculty mentor..."
-                  disabledUserIds={mentors.map(m => (typeof m.mentorId === 'object' ? m.mentorId?._id : m.mentorId)).filter(Boolean)}
-                  disabledReason="Already assigned"
-                />
-              </div>
-              <button 
-                type="submit" 
-                className="btn btn-primary" 
-                disabled={!selectedMentorId}
-                style={{ whiteSpace: 'nowrap', height: '42px', padding: '0 20px', alignSelf: 'flex-start' }}
-              >
-                Add Mentor
-              </button>
-            </div>
-          </form>
-        )}
+    <section className="ui-panel prj-mentors" id="mentors" aria-labelledby="prj-mentors-title">
+      <header className="ui-panel__head">
+        <div className="ui-panel__titles">
+          <h2 className="ui-panel__title" id="prj-mentors-title">
+            Mentors
+          </h2>
+          <span className="ui-panel__meta">
+            <Counter value={mentors.length} />
+          </span>
+        </div>
+      </header>
 
-        {mentors.length ? (
-          <div style={{ display: 'grid', gap: '16px', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-            {mentors.map(m => {
-              const userObj = m.mentorId;
+      <div className="ui-panel__body ui-panel__body--flush">
+        {loading ? (
+          <div className="prj-roster" aria-hidden="true">
+            {[0, 1].map((row) => (
+              <div className="prj-roster__row" key={row}>
+                <span className="ui-skel" style={{ width: 34, height: 34 }} />
+                <span className="ui-skel" style={{ flex: 1, height: 12 }} />
+              </div>
+            ))}
+          </div>
+        ) : mentors.length ? (
+          <ul className="prj-roster">
+            {mentors.map((assignment) => {
+              const mentor = assignment.mentorId;
+              if (!mentor) return null;
               return (
-                <div key={m.assignmentId || m._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--bg-card-2)' }}>
-                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                    {userObj.profileImage ? (
-                      <img src={userObj.profileImage} style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} alt={userObj.name} />
-                    ) : (
-                      <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--accent-glow)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
-                        {userObj.name.charAt(0)}
-                      </div>
-                    )}
-                    <div>
-                      <UserDisplay user={userObj} showEmail={false} />
-                      <div style={{ marginTop: '4px' }}>
-                        <span className="badge" style={{ fontSize: '11px', background: m.isPrimary ? 'var(--primary-glow)' : 'var(--bg)', color: m.isPrimary ? 'var(--primary)' : 'var(--text-faint)', border: m.isPrimary ? '1px solid rgba(var(--primary-rgb), 0.2)' : '1px solid var(--border)' }}>
-                          {m.isPrimary ? 'Primary Mentor' : 'Secondary Mentor'}
-                        </span>
-                      </div>
-                    </div>
+                <li className="ui-row prj-roster__row" key={assignment.assignmentId || assignment._id || mentor._id}>
+                  {mentor.profileImage ? (
+                    <span className="ui-avatar prj-avatar">
+                      <img src={mentor.profileImage} alt="" />
+                    </span>
+                  ) : (
+                    <span className="ui-avatar prj-avatar" aria-hidden="true">
+                      {initialOf(mentor.name)}
+                    </span>
+                  )}
+                  <div className="prj-roster__main">
+                    <p className="prj-roster__name">{mentor.name}</p>
+                    <p className="prj-roster__sub">{mentor.department || 'Faculty mentor'}</p>
                   </div>
-                  
-                  {user?.role === 'project_admin' && (
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      {!m.isPrimary && (
-                        <button className="btn btn-sm btn-outline" onClick={() => handleSetPrimary(userObj._id)}>Set Primary</button>
+                  <span className={`ui-tag ${assignment.isPrimary ? 'is-accent' : 'ui-tag--plain'}`}>
+                    {assignment.isPrimary ? 'Primary mentor' : 'Mentor'}
+                  </span>
+                  {isAdmin && (
+                    <div className="ui-row__actions prj-roster__actions">
+                      {!assignment.isPrimary && (
+                        <button
+                          type="button"
+                          className="ui-btn ui-btn--quiet ui-btn--sm"
+                          onClick={() => handleSetPrimary(mentor._id)}
+                        >
+                          Make primary
+                        </button>
                       )}
-                      <button className="btn btn-sm btn-outline" style={{ color: 'var(--danger)', borderColor: 'var(--danger-soft)', background: 'var(--danger-soft)' }} onClick={() => handleRemoveMentor(userObj._id)}>Remove</button>
+                      <button
+                        type="button"
+                        className="ui-btn ui-btn--danger ui-btn--sm"
+                        onClick={() => handleRemoveMentor(mentor._id)}
+                      >
+                        Remove
+                      </button>
                     </div>
                   )}
-                </div>
+                </li>
               );
             })}
+          </ul>
+        ) : (
+          <div className="ui-empty prj-empty prj-empty--inset">
+            <span className="ui-empty__mark">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="8" r="3.4" stroke="currentColor" strokeWidth="1.7" />
+                <path d="M4.8 20c.7-3.8 3.6-6 7.2-6s6.5 2.2 7.2 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+              </svg>
+            </span>
+            <p className="ui-empty__title">No mentors assigned</p>
+            <p className="ui-empty__text">
+              {isAdmin ? 'Assign a faculty mentor below.' : 'A project admin assigns the mentor.'}
+            </p>
           </div>
-        ) : <div className="empty-state">No mentors assigned yet.</div>}
+        )}
       </div>
-    </div>
+
+      {isAdmin && (
+        <footer className="ui-panel__foot prj-mentors__foot">
+          <form className="prj-mentors__form" onSubmit={handleAddMentor}>
+            <div id="prj-add-mentor" className="prj-mentors__picker" role="group" aria-labelledby="prj-add-mentor-label">
+              <span className="ui-visually-hidden" id="prj-add-mentor-label">
+                Assign a faculty mentor
+              </span>
+              <UserSelect
+                role="faculty_mentor"
+                value={selectedMentorId}
+                onChange={setSelectedMentorId}
+                placeholder="Search faculty mentors"
+                disabledUserIds={mentors
+                  .map((m) => (typeof m.mentorId === 'object' ? m.mentorId?._id : m.mentorId))
+                  .filter(Boolean)}
+                disabledReason="Already assigned"
+              />
+            </div>
+            <button type="submit" className="ui-btn ui-btn--quiet ui-btn--sm" disabled={!selectedMentorId || adding}>
+              {adding ? 'Assigning…' : 'Assign mentor'}
+            </button>
+          </form>
+        </footer>
+      )}
+    </section>
   );
 }

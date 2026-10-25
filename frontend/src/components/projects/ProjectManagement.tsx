@@ -1,16 +1,20 @@
-import { useState, useEffect } from 'react';
-import { UserDisplay } from '../UserDisplay';
+import { useState, useEffect, useId } from 'react';
 import { UserSelect } from '../UserSelect';
 import { api } from '../../services/api';
 
-export function ProjectManagement({ project, onUpdate }: { project: any, onUpdate: () => void }) {
+function initialOf(name?: string): string {
+  return (name || '?').replace(/^Dr\.\s*/i, '').trim().charAt(0).toUpperCase() || '?';
+}
+
+export function ProjectManagement({ project, onUpdate }: { project: any; onUpdate: () => void }) {
   const [status, setStatus] = useState(project.status);
   const [editName, setEditName] = useState(project.name);
   const [editDescription, setEditDescription] = useState(project.description);
-  
+
   const [loading, setLoading] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [members, setMembers] = useState<any[]>([]);
+  const fieldId = useId();
 
   useEffect(() => {
     setStatus(project.status);
@@ -88,133 +92,181 @@ export function ProjectManagement({ project, onUpdate }: { project: any, onUpdat
     }
   };
 
-  const isTL = (m: any) => typeof project.teamLeaderId === 'object' ? project.teamLeaderId?._id === m.studentId._id : project.teamLeaderId === m.studentId._id;
-  const tlMember = members.find(m => isTL(m));
+  const isTL = (m: any) =>
+    typeof project.teamLeaderId === 'object'
+      ? project.teamLeaderId?._id === m.studentId._id
+      : project.teamLeaderId === m.studentId._id;
+  const tlMember = members.find((m) => isTL(m));
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '32px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px' }}>
-        
-        {/* EDIT PROJECT DETAILS */}
-        <div className="card">
-          <h3 className="card-title" style={{ marginBottom: '16px' }}>Edit Project Details</h3>
-          <div className="card-body" style={{ padding: 0 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: 'var(--text-muted)', fontSize: '13px' }}>Project Name</label>
-                <input 
-                  type="text" 
-                  className="input"
-                  value={editName}
-                  onChange={e => setEditName(e.target.value)}
-                  style={{ width: '100%', padding: '10px 12px' }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: 'var(--text-muted)', fontSize: '13px' }}>Project Status</label>
-                <select className="input" value={status} onChange={e => setStatus(e.target.value)} style={{ width: '100%', padding: '10px 12px' }}>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                  <option value="completed">Completed</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: 'var(--text-muted)', fontSize: '13px' }}>Description</label>
-                <textarea 
-                  className="input"
-                  value={editDescription}
-                  onChange={e => setEditDescription(e.target.value)}
-                  rows={4}
-                  style={{ width: '100%', padding: '10px 12px', resize: 'vertical' }}
-                />
-              </div>
-              <button className="btn btn-primary" onClick={handleUpdateDetails} disabled={loading} style={{ alignSelf: 'flex-start' }}>Save Changes</button>
-            </div>
-          </div>
+    <section className="ui-panel prj-manage" id="manage" aria-labelledby="prj-manage-title">
+      <header className="ui-panel__head">
+        <div className="ui-panel__titles">
+          <h2 className="ui-panel__title" id="prj-manage-title">
+            Project settings
+          </h2>
+          <span className="ui-panel__meta">Admins only</span>
         </div>
+      </header>
 
-        {/* TEAM MANAGEMENT */}
-        <div className="card">
-          <h3 className="card-title" style={{ marginBottom: '16px' }}>Team Management</h3>
-          <div className="card-body" style={{ padding: 0, display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            
-            {/* CURRENT TL DISPLAY */}
-            <div style={{ padding: '16px', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600, marginBottom: '8px' }}>Current Team Leader</div>
+      <div className="ui-panel__body">
+        <div className="prj-manage__grid">
+          <form
+            className="prj-manage__section"
+            onSubmit={(event) => {
+              event.preventDefault();
+              handleUpdateDetails();
+            }}
+          >
+            <h3 className="prj-manage__heading">Details</h3>
+
+            <div>
+              <label className="ui-label" htmlFor={`${fieldId}-name`}>
+                Project name
+              </label>
+              <input
+                id={`${fieldId}-name`}
+                type="text"
+                className="ui-field"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+
+            <div>
+              <label className="ui-label" htmlFor={`${fieldId}-status`}>
+                Status
+              </label>
+              <select
+                id={`${fieldId}-status`}
+                className="ui-field ui-field--select"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                disabled={loading}
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="completed">Completed</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="ui-label" htmlFor={`${fieldId}-description`}>
+                Description
+              </label>
+              <textarea
+                id={`${fieldId}-description`}
+                className="ui-field ui-field--area"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                rows={4}
+                disabled={loading}
+              />
+            </div>
+
+            <div>
+              <button type="submit" className="ui-btn ui-btn--primary ui-btn--sm" disabled={loading}>
+                {loading ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
+          </form>
+
+          <div className="prj-manage__section">
+            <h3 className="prj-manage__heading">Team</h3>
+
+            <div className="prj-manage__leader">
+              <span className="prj-manage__leader-label">Current team leader</span>
               {tlMember ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--accent-glow)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
-                    {tlMember.studentId.name.charAt(0)}
-                  </div>
-                  <div>
-                    <UserDisplay user={tlMember.studentId} />
-                  </div>
-                </div>
+                <span className="prj-manage__leader-person">
+                  <span className="ui-avatar ui-avatar--sm prj-avatar" aria-hidden="true">
+                    {initialOf(tlMember.studentId?.name)}
+                  </span>
+                  <span>
+                    <span className="prj-manage__leader-name">{tlMember.studentId?.name}</span>
+                    <span className="prj-manage__leader-sub">
+                      {tlMember.studentId?.department || 'Student'}
+                    </span>
+                  </span>
+                </span>
               ) : (
-                <div style={{ color: 'var(--warn)', fontWeight: 500 }}>No Team Leader Assigned</div>
+                <span className="ui-notice">No team leader assigned yet.</span>
               )}
             </div>
 
-            {/* ADD MEMBER */}
-            <div>
-              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: 'var(--text-muted)', fontSize: '13px' }}>Add Project Member</label>
-              <form onSubmit={handleAddMember} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                <div style={{ flex: 1 }}>
-                  <UserSelect
-                    role="student"
-                    value={selectedStudentId}
-                    onChange={(id) => setSelectedStudentId(id)}
-                    disabledUserIds={members.map((m: any) => m.studentId?._id || m.studentId)}
-                    disabledReason="Already a member"
-                    placeholder="Search student by name, email, or department..."
-                    emptyMessage="No registered students found"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="btn btn-outline"
-                  disabled={loading || !selectedStudentId}
-                  style={{
-                    color: 'var(--primary)',
-                    borderColor: 'var(--primary-soft)',
-                    height: '44px',
-                    padding: '0 20px',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  Add
-                </button>
-              </form>
-            </div>
+            <form className="prj-manage__add" onSubmit={handleAddMember}>
+              <div id="prj-add-member" role="group" aria-labelledby="prj-add-member-label">
+                <p className="ui-label" id="prj-add-member-label">
+                  Add a member
+                </p>
+                <UserSelect
+                  role="student"
+                  value={selectedStudentId}
+                  onChange={(id) => setSelectedStudentId(id)}
+                  disabledUserIds={members.map((m: any) => m.studentId?._id || m.studentId)}
+                  disabledReason="Already a member"
+                  placeholder="Search students by name, email or department"
+                  emptyMessage="No registered students found"
+                />
+              </div>
+              <button
+                type="submit"
+                className="ui-btn ui-btn--quiet ui-btn--sm"
+                disabled={loading || !selectedStudentId}
+              >
+                Add member
+              </button>
+            </form>
 
-            {/* MEMBERS LIST */}
-            <div>
-              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: 'var(--text-muted)', fontSize: '13px' }}>Manage Members</label>
+            <div className="prj-manage__roster">
+              <p className="prj-manage__roster-label">
+                Roster <span className="ui-meta">{members.length}</span>
+              </p>
               {members.length ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
-                  {members.map(m => (
-                    <div key={m._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg)' }}>
-                      <div>
-                        <UserDisplay user={m.studentId} />
+                <ul className="ui-rows">
+                  {members.map((member) => (
+                    <li className="ui-row prj-manage__member" key={member._id}>
+                      <span className="ui-avatar ui-avatar--sm prj-avatar" aria-hidden="true">
+                        {initialOf(member.studentId?.name)}
+                      </span>
+                      <div className="ui-row__main">
+                        <div className="ui-row__title">{member.studentId?.name || 'Unknown student'}</div>
+                        <div className="ui-row__sub">
+                          {isTL(member) ? 'Team leader' : member.studentId?.department || 'Student'}
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        {!isTL(m) && (
-                          <>
-                            <button className="btn btn-sm btn-outline" onClick={() => handleSetTeamLeader(m.studentId._id)} disabled={loading}>Set TL</button>
-                            <button className="btn btn-sm btn-outline" style={{ color: 'var(--danger)', borderColor: 'var(--danger-soft)' }} onClick={() => handleRemoveMember(m.studentId._id)} disabled={loading}>Remove</button>
-                          </>
-                        )}
-                        {isTL(m) && <span className="badge badge-primary">TL</span>}
-                      </div>
-                    </div>
+                      {isTL(member) ? (
+                        <span className="ui-tag is-accent">Team leader</span>
+                      ) : (
+                        <div className="ui-row__actions">
+                          <button
+                            type="button"
+                            className="ui-btn ui-btn--quiet ui-btn--sm"
+                            onClick={() => handleSetTeamLeader(member.studentId._id)}
+                            disabled={loading}
+                          >
+                            Make leader
+                          </button>
+                          <button
+                            type="button"
+                            className="ui-btn ui-btn--danger ui-btn--sm"
+                            onClick={() => handleRemoveMember(member.studentId._id)}
+                            disabled={loading}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+                    </li>
                   ))}
-                </div>
-              ) : <div className="empty-state" style={{ padding: '16px' }}>No members yet.</div>}
+                </ul>
+              ) : (
+                <p className="ui-meta">No members yet.</p>
+              )}
             </div>
-
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }

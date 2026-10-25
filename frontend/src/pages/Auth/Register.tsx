@@ -1,30 +1,33 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
-import { useNavigate } from 'react-router-dom';
+import { AuthStory, type AuthSlide } from './AuthStory';
+import './auth.css';
 
-const ALLOWED_ROLES = [
-  { value: 'student',             label: 'Student' },
-  { value: 'faculty_coordinator', label: 'Faculty Coordinator' },
-  { value: 'faculty_mentor',      label: 'Faculty Mentor' },
-  { value: 'club_admin',          label: 'Club Admin' },
-  { value: 'project_admin',       label: 'Project Admin' },
+const SLIDES: AuthSlide[] = [
+  {
+    eyebrow: 'New account',
+    title: <>Join the work<br />on campus.</>,
+    body: 'Student-managed clubs and GUIITAR projects, in one place.',
+    foot: 'For authorized students, faculty, and college officials',
+  },
 ];
 
 export default function Register() {
   const { login } = useAuth();
-  const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    name: '', email: '', password: '', role: '', department: '', universityId: '', phone: '', bio: ''
+    name: '', email: '', password: '', role: 'student', department: '', universityId: '', phone: '', bio: ''
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
-    if (!formData.name || !formData.email || !formData.password || !formData.role) {
+
+    if (!formData.name || !formData.email || !formData.password) {
       setError('Please fill in all required fields.');
       return;
     }
@@ -54,64 +57,178 @@ export default function Register() {
   };
 
   return (
-    <div className="auth-page">
-      <div className="auth-card auth-card-wide">
-        <div className="auth-brand">
-          <div className="dot"></div>
-          <span>CNP Department</span>
-        </div>
-        <h1 className="auth-title">Create account</h1>
-        <p className="auth-sub">Join the Student Clubs & Projects portal</p>
-        
-        {error && <div className="auth-error">{error}</div>}
+    <main className="auth-gate">
+      <section className="auth-shell auth-shell--wide" aria-label="CNP Department create account">
+        <AuthStory slides={SLIDES} active={0} />
 
-        <form onSubmit={handleSubmit} noValidate>
-          <div className="auth-grid">
-            <div className="auth-field">
-              <label>Full Name *</label>
-              <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required />
-            </div>
-            <div className="auth-field">
-              <label>Email *</label>
-              <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} required />
-            </div>
-            <div className="auth-field">
-              <label>Password *</label>
-              <input type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} required minLength={8} />
-            </div>
-            <div className="auth-field">
-              <label>Role *</label>
-              <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} required>
-                <option value="">— Select your role —</option>
-                {ALLOWED_ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-              </select>
-            </div>
-            <div className="auth-field">
-              <label>Department</label>
-              <input type="text" value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} />
-            </div>
-            <div className="auth-field">
-              <label>University ID</label>
-              <input type="text" value={formData.universityId} onChange={e => setFormData({...formData, universityId: e.target.value})} />
-            </div>
-            <div className="auth-field">
-              <label>Phone</label>
-              <input type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
-            </div>
-            <div className="auth-field auth-field-full">
-              <label>Bio</label>
-              <textarea rows={2} value={formData.bio} onChange={e => setFormData({...formData, bio: e.target.value})} />
-            </div>
+        <div className="auth-panel">
+          <div className="auth-panel__inner">
+            <header className="auth-head">
+              <h2 className="auth-head__title">Create your account</h2>
+              <p className="auth-head__sub">Join the Student Clubs &amp; Projects portal.</p>
+            </header>
+
+            {error && <div className="auth-alert" id="register-error" role="alert">{error}</div>}
+
+            <form className="auth-form" onSubmit={handleSubmit} noValidate>
+              <div className="auth-fields">
+                <div className="auth-line">
+                  <label className="ui-label" htmlFor="register-name">
+                    Full name <span className="auth-req" aria-hidden="true">*</span>
+                  </label>
+                  <input
+                    id="register-name"
+                    className="ui-field auth-input__field"
+                    type="text"
+                    autoComplete="name"
+                    value={formData.name}
+                    onChange={e => setFormData({ ...formData, name: e.target.value })}
+                    disabled={loading}
+                    required
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={error ? 'register-error' : undefined}
+                  />
+                </div>
+
+                <div className="auth-line">
+                  <label className="ui-label" htmlFor="register-email">
+                    Email <span className="auth-req" aria-hidden="true">*</span>
+                  </label>
+                  <input
+                    id="register-email"
+                    className="ui-field auth-input__field"
+                    type="email"
+                    autoComplete="email"
+                    inputMode="email"
+                    value={formData.email}
+                    onChange={e => setFormData({ ...formData, email: e.target.value })}
+                    disabled={loading}
+                    required
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={error ? 'register-error' : undefined}
+                  />
+                </div>
+
+                <div className="auth-line">
+                  <label className="ui-label" htmlFor="register-password">
+                    Password <span className="auth-req" aria-hidden="true">*</span>
+                  </label>
+                  <div className="auth-input auth-input--action">
+                    <input
+                      id="register-password"
+                      className="ui-field auth-input__field"
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      value={formData.password}
+                      onChange={e => setFormData({ ...formData, password: e.target.value })}
+                      disabled={loading}
+                      required
+                      minLength={8}
+                      aria-invalid={Boolean(error)}
+                      aria-describedby={error ? 'register-error' : undefined}
+                    />
+                    <button
+                      className="auth-reveal"
+                      type="button"
+                      onClick={() => setShowPassword(visible => !visible)}
+                      disabled={loading}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      aria-pressed={showPassword}
+                    >
+                      {showPassword ? (
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                          <path d="M2.6 12S6.2 6.4 12 6.4 21.4 12 21.4 12 17.8 17.6 12 17.6 2.6 12 2.6 12Z" stroke="currentColor" strokeWidth="1.6" />
+                          <circle cx="12" cy="12" r="2.7" stroke="currentColor" strokeWidth="1.6" />
+                          <path d="m4.5 4.5 15 15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                        </svg>
+                      ) : (
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                          <path d="M2.6 12S6.2 6.4 12 6.4 21.4 12 21.4 12 17.8 17.6 12 17.6 2.6 12 2.6 12Z" stroke="currentColor" strokeWidth="1.6" />
+                          <circle cx="12" cy="12" r="2.7" stroke="currentColor" strokeWidth="1.6" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="auth-line">
+                  <span className="ui-label">Account type</span>
+                  <p className="auth-fixed">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                      <path d="M12 3 3 7l9 4 9-4-9-4Zm-9 8v4l9 4 9-4v-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    Student
+                  </p>
+                  <p className="ui-hint">
+                    Faculty and administrator accounts are provisioned by the department.
+                  </p>
+                </div>
+
+                <div className="auth-line">
+                  <label className="ui-label" htmlFor="register-department">Department</label>
+                  <input
+                    id="register-department"
+                    className="ui-field auth-input__field"
+                    type="text"
+                    value={formData.department}
+                    onChange={e => setFormData({ ...formData, department: e.target.value })}
+                    disabled={loading}
+                  />
+                </div>
+
+                <div className="auth-line">
+                  <label className="ui-label" htmlFor="register-university-id">University ID</label>
+                  <input
+                    id="register-university-id"
+                    className="ui-field auth-input__field"
+                    type="text"
+                    value={formData.universityId}
+                    onChange={e => setFormData({ ...formData, universityId: e.target.value })}
+                    disabled={loading}
+                  />
+                </div>
+
+                <div className="auth-line">
+                  <label className="ui-label" htmlFor="register-phone">Phone</label>
+                  <input
+                    id="register-phone"
+                    className="ui-field auth-input__field"
+                    type="tel"
+                    autoComplete="tel"
+                    value={formData.phone}
+                    onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                    disabled={loading}
+                  />
+                </div>
+
+                <div className="auth-line auth-line--full">
+                  <label className="ui-label" htmlFor="register-bio">Bio</label>
+                  <textarea
+                    id="register-bio"
+                    className="ui-field ui-field--area auth-input__field"
+                    rows={3}
+                    value={formData.bio}
+                    onChange={e => setFormData({ ...formData, bio: e.target.value })}
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+
+              <button className="ui-btn ui-btn--primary ui-btn--lg ui-btn--block auth-go" type="submit" disabled={loading}>
+                {loading ? <><span className="auth-spinner" aria-hidden="true" />Creating account…</> : 'Create account'}
+              </button>
+            </form>
+
+            <p className="auth-alt">
+              Already have an account? <Link to="/login">Sign in</Link>
+            </p>
           </div>
-          <button type="submit" className="btn btn-primary auth-submit" disabled={loading}>
-            {loading ? 'Creating account...' : 'Create Account'}
-          </button>
-        </form>
 
-        <p className="auth-switch">
-          Already have an account? <a href="#" onClick={(e) => { e.preventDefault(); navigate('/login'); }}>Sign in</a>
-        </p>
-      </div>
-    </div>
+          <p className="auth-foot-line">
+            CNP Department <span aria-hidden="true">·</span> Student managed clubs &amp; GUIITAR
+          </p>
+        </div>
+      </section>
+    </main>
   );
 }

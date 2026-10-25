@@ -1,0 +1,1064 @@
+/* Hallmark · shape: signal board · genre: modern-minimal · theme: Cobalt · redesign: visual pass
+ * signature: the arrival sparkline in the panel head, the cobalt rising edge on unread rows,
+ * and a reading pane that is a record (title block, fact grid, quote), never an essay */
+/* ═══════════════════════════════════════════════════════════════════════════
+   Notifications · signal
+   A ruled master–detail inbox. Read state is carried by three non-colour cues
+   (edge stack, glyph plate, title weight); the panel head plots real arrivals;
+   every day group carries its own density ticks. Values come from tokens.css.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.ntf {
+  display: block;
+}
+
+/* The shell has no page-level button reset (base.css scopes its reset to .landing), so
+   UA chrome leaks into ui.css primitives that do not declare their own face. Zero
+   specificity, so every primitive keeps its own key. */
+.ntf :where(button) {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* ── Page head ───────────────────────────────────────────────────────────── */
+
+.ntf-headline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.ntf-headline .ui-count {
+  transform: translateY(-1px);
+}
+
+/* ── Panel head: filters + arrival rhythm ────────────────────────────────── */
+
+.ntf-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-xs) var(--space-md);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+  background: var(--color-paper-2);
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+}
+
+.ntf-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+/* The read-state control is two words and two numbers: the numeral is the
+   reading, and nothing else claims to be a gauge. */
+.ntf-seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.ntf-seg__count {
+  color: var(--color-muted);
+  font: 500 var(--text-xs)/1 var(--font-body);
+  font-variant-numeric: tabular-nums;
+  transition: color var(--dur-short) var(--ease-in-out);
+}
+
+.ntf-seg button[aria-pressed='true'] .ntf-seg__count {
+  color: var(--color-ink);
+}
+
+.ntf-filter {
+  position: relative;
+  display: flex;
+  flex: none;
+}
+
+.ntf-filter .ui-btn {
+  color: var(--color-ink-2);
+}
+
+.ntf-menu {
+  position: absolute;
+  top: calc(100% + var(--space-2xs));
+  right: 0;
+  z-index: var(--z-dropdown);
+  min-width: 248px;
+}
+
+.ntf-menu__tick {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--color-accent-deep);
+  opacity: 0;
+  transition: opacity var(--dur-micro) var(--ease-in-out);
+}
+
+.ntf-menu .ui-menu__item[aria-checked='true'] .ntf-menu__tick {
+  opacity: 1;
+}
+
+.ntf-menu .ui-menu__item[aria-checked='true'] {
+  color: var(--color-ink);
+}
+
+.ntf-menu__label {
+  flex: none;
+}
+
+/* Family share: the type filter reads as a distribution, not a list of words. */
+.ntf-menu__bar {
+  position: relative;
+  flex: 1;
+  min-width: 32px;
+  height: 4px;
+  margin-left: var(--space-2xs);
+  background: var(--color-paper-3);
+  overflow: hidden;
+}
+
+.ntf-menu__bar > span {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background: var(--color-glyph-3);
+  transform: scaleX(var(--ntf-f, 0));
+  transform-origin: left center;
+  transition: transform var(--dur-long) var(--ease-out);
+}
+
+.ntf-menu .ui-menu__item[aria-checked='true'] .ntf-menu__bar > span {
+  background: var(--color-accent);
+}
+
+.ntf-menu__count {
+  min-width: 2ch;
+  color: var(--color-muted);
+  font: 500 var(--text-xs)/1 var(--font-body);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ── Arrival rhythm: 14 real days, the newest day marked ─────────────────── */
+
+.ntf-vol {
+  --ntf-vol-h: 26px;
+  --ntf-vol-w: 6px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex: none;
+}
+
+.ntf-vol__days {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3xs);
+  height: var(--ntf-vol-h);
+  padding-bottom: var(--space-3xs);
+  border-bottom: var(--rule-hair) solid var(--color-rule-2);
+  box-sizing: content-box;
+}
+
+/* One column per day. Nothing arrived is a 3px stub on the baseline — the days
+   without signal are part of the reading, not blank space. */
+.ntf-vol__day {
+  position: relative;
+  display: block;
+  width: var(--ntf-vol-w);
+  height: 100%;
+  border-radius: 1px;
+  background: transparent;
+}
+
+.ntf-vol__day::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 100%;
+  min-height: 3px;
+  border-radius: 1px;
+  background: var(--color-glyph-4);
+  transform: scaleY(var(--ntf-f, 0));
+  transform-origin: bottom center;
+  transition: transform var(--dur-long) var(--ease-out);
+}
+
+.ntf-vol__day[data-empty]::after {
+  background: var(--color-rule-2);
+  transform: scaleY(0.12);
+}
+
+.ntf-vol__day[data-today]::after {
+  background: var(--color-accent);
+}
+
+.ntf-vol__day[data-today][data-empty]::after {
+  background: var(--color-rule-2);
+}
+
+.ntf-vol__total {
+  display: grid;
+  gap: 1px;
+  padding-left: var(--space-sm);
+  border-left: var(--rule-hair) solid var(--color-rule-2);
+}
+
+.ntf-vol__total .vis-counter {
+  font-size: var(--text-md);
+  line-height: 1;
+  color: var(--color-ink);
+}
+
+.ntf-vol__cap {
+  font: 500 var(--text-xs)/1.2 var(--font-body);
+  color: var(--color-ink-2);
+}
+
+/* ── The split ───────────────────────────────────────────────────────────── */
+
+/* One frame height for list and reading pane, so a short inbox still reads as an app
+   surface instead of a card that stops mid-page. */
+.ntf-inbox {
+  --ntf-frame: calc(100dvh - 15rem);
+}
+
+.ntf-body {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  align-items: stretch;
+  min-height: var(--ntf-frame);
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
+  overflow: hidden;
+}
+
+.ntf-body.is-solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* An empty inbox is the size of its message, not of the viewport. */
+.ntf-body.is-empty {
+  min-height: 0;
+}
+
+.ntf-column {
+  min-width: 0;
+  border-right: var(--rule-hair) solid var(--color-rule);
+}
+
+.ntf-body.is-solo .ntf-column {
+  border-right: 0;
+}
+
+.ntf-list {
+  max-height: var(--ntf-frame);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ── Day groups: label, count, density ───────────────────────────────────── */
+
+.ntf-day {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-base);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin: 0;
+  padding: var(--space-2xs) var(--space-md);
+  background: var(--color-paper-2);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+  font: 500 var(--text-xs)/1.6 var(--font-body);
+  letter-spacing: 0.01em;
+  color: var(--color-ink-2);
+}
+
+.ntf-day__label {
+  flex: none;
+}
+
+.ntf-day__count {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink-2);
+}
+
+/* The rule takes the rest of the line; the group's count already sits beside
+   its name, so no decorative ticks are drawn here. */
+.ntf-day::after {
+  content: '';
+  flex: 1;
+  height: var(--rule-hair);
+  background: var(--color-rule);
+}
+
+/* ── Rows ────────────────────────────────────────────────────────────────── */
+
+.ntf-row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+  animation: ntf-row-in 220ms var(--ease-out) both;
+  animation-delay: calc(var(--ntf-i, 0) * 40ms);
+  transition: background-color var(--dur-short) var(--ease-in-out);
+}
+
+.ntf-row:last-child {
+  border-bottom: 0;
+}
+
+.ntf-row:hover {
+  background: var(--color-paper-2);
+}
+
+.ntf-row.is-selected {
+  background: var(--color-accent-wash);
+}
+
+/* The rising edge: consecutive unread rows stack into one cobalt column down the
+   list, and the bar itself survives greyscale as a dark edge against paper. */
+.ntf-row::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--color-accent);
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform var(--dur-short) var(--ease-out);
+}
+
+.ntf-row.is-unread::before,
+.ntf-row.is-selected::before {
+  transform: scaleY(1);
+}
+
+.ntf-row__hit {
+  display: grid;
+  grid-template-columns: 5px 34px minmax(0, 1fr);
+  column-gap: var(--space-sm);
+  align-items: start;
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-xs) var(--space-2xs) var(--space-xs) var(--space-md);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ntf-row__hit:focus-visible {
+  outline-offset: -2px;
+}
+
+.ntf-row__flag {
+  width: 5px;
+  height: 5px;
+  margin-top: calc(var(--space-sm) + var(--space-3xs));
+  border-radius: 1px;
+  background: transparent;
+  transition: background-color var(--dur-short) var(--ease-in-out);
+}
+
+.ntf-row.is-unread .ntf-row__flag {
+  background: var(--color-accent);
+  animation: ntf-settle 260ms var(--ease-out) both;
+}
+
+.ntf-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: var(--rule-hair) solid var(--color-rule);
+  border-radius: var(--radius-input);
+  background: var(--color-paper-2);
+  color: var(--color-muted);
+  transition:
+    background-color var(--dur-short) var(--ease-in-out),
+    border-color var(--dur-short) var(--ease-in-out),
+    color var(--dur-short) var(--ease-in-out);
+}
+
+.ntf-mark.is-positive {
+  border-color: transparent;
+  background: var(--color-positive-wash);
+  color: var(--color-positive);
+}
+
+.ntf-mark.is-negative {
+  border-color: transparent;
+  background: var(--color-negative-wash);
+  color: var(--color-negative);
+}
+
+.ntf-row.is-unread .ntf-mark {
+  border-color: var(--color-rule-2);
+  background: var(--color-sheet);
+  color: var(--color-ink);
+}
+
+.ntf-row.is-unread .ntf-mark.is-positive {
+  border-color: transparent;
+  background: var(--color-positive-wash);
+  color: var(--color-positive);
+}
+
+.ntf-row.is-unread .ntf-mark.is-negative {
+  border-color: transparent;
+  background: var(--color-negative-wash);
+  color: var(--color-negative);
+}
+
+.ntf-row__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 1px;
+}
+
+.ntf-row__title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 var(--text-sm)/1.35 var(--font-display);
+  letter-spacing: -0.01em;
+  color: var(--color-ink-2);
+  transition: color var(--dur-short) var(--ease-in-out);
+}
+
+.ntf-row.is-unread .ntf-row__title {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+/* One line of facts, never the sentence: the message belongs to the record. */
+.ntf-row__meta {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  color: var(--color-muted);
+}
+
+.ntf-row.is-unread .ntf-row__meta {
+  color: var(--color-ink-2);
+}
+
+.ntf-row__part {
+  display: inline;
+}
+
+.ntf-row__part:nth-child(n + 2) {
+  opacity: 0.82;
+}
+
+.ntf-row__dot {
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  margin: 0 var(--space-xs);
+  border-radius: 1px;
+  background: var(--color-rule-2);
+  vertical-align: middle;
+}
+
+.ntf-row__aside {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  width: 64px;
+  flex: none;
+  padding: var(--space-xs) var(--space-md) var(--space-xs) 0;
+}
+
+.ntf-row__time {
+  font: 400 var(--text-xs)/1.4 var(--font-body);
+  color: var(--color-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  transition: opacity var(--dur-micro) var(--ease-in-out);
+}
+
+.ntf-row.is-unread .ntf-row__time {
+  color: var(--color-ink-2);
+}
+
+.ntf-row__tools {
+  position: absolute;
+  top: var(--space-2xs);
+  right: var(--space-sm);
+  display: flex;
+  gap: 2px;
+  transition:
+    opacity var(--dur-short) var(--ease-out),
+    transform var(--dur-short) var(--ease-out);
+}
+
+/* The tools step back only while the row is idle, and only where a pointer can reach
+   them; on touch the row itself opens the pane. */
+@media (hover: hover) {
+  .ntf-row:not(:hover):not(:focus-within) .ntf-row__tools {
+    opacity: 0;
+    transform: translateX(4px);
+  }
+}
+
+.ntf-row:hover .ntf-row__time,
+.ntf-row:focus-within .ntf-row__time {
+  opacity: 0;
+}
+
+/* Inline row tool: the 34px key is too wide for a 64px column. */
+.ntf-tool {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: var(--radius-input);
+  background: var(--color-sheet);
+  color: var(--color-ink-2);
+  box-shadow: var(--shadow-card);
+  transition:
+    background-color var(--dur-short) var(--ease-in-out),
+    border-color var(--dur-short) var(--ease-in-out),
+    color var(--dur-short) var(--ease-in-out);
+}
+
+.ntf-tool:hover {
+  background: var(--color-paper-2);
+  border-color: var(--color-rule-2);
+  color: var(--color-ink);
+}
+
+.ntf-tool:active {
+  background: var(--color-paper-3);
+}
+
+.ntf-tool:disabled,
+.ntf-back:disabled {
+  color: var(--color-muted);
+  background: var(--color-paper-2);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── Reading pane: the record ────────────────────────────────────────────── */
+
+.ntf-pane {
+  min-width: 0;
+  background: var(--color-sheet);
+}
+
+.ntf-record {
+  display: grid;
+  align-content: start;
+  gap: var(--space-md);
+  max-height: var(--ntf-frame);
+  overflow-y: auto;
+  padding: var(--space-lg);
+  animation: ntf-record-in 160ms var(--ease-out) both;
+}
+
+.ntf-back {
+  display: none;
+  align-items: center;
+  gap: var(--space-xs);
+  align-self: start;
+  min-height: 28px;
+  padding: 0 var(--space-xs) 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-muted);
+  font: 500 var(--text-xs)/1 var(--font-body);
+  cursor: pointer;
+  transition: color var(--dur-short) var(--ease-in-out);
+}
+
+.ntf-back:hover {
+  color: var(--color-ink);
+}
+
+.ntf-record__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-sm);
+}
+
+/* The plate is the signature object: a cut corner, one hairline, the entity mark. */
+.ntf-plate {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  flex: none;
+  background: var(--color-paper-2);
+  color: var(--color-ink-2);
+  box-shadow: inset 0 0 0 1px var(--color-rule-2);
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--cut) * 1.25) 0,
+    100% calc(var(--cut) * 1.25),
+    100% 100%,
+    0 100%
+  );
+}
+
+.ntf-plate.is-positive {
+  background: var(--color-positive-wash);
+  box-shadow: inset 0 0 0 1px var(--color-positive);
+  color: var(--color-positive);
+}
+
+.ntf-plate.is-negative {
+  background: var(--color-negative-wash);
+  box-shadow: inset 0 0 0 1px var(--color-negative);
+  color: var(--color-negative);
+}
+
+.ntf-record__ident {
+  min-width: 0;
+}
+
+.ntf-record__kind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  font: 500 var(--text-xs)/1.4 var(--font-body);
+  color: var(--color-muted);
+}
+
+.ntf-sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 1px;
+  background: var(--color-rule-2);
+}
+
+.ntf-record__title {
+  margin-top: var(--space-3xs);
+  font: 600 var(--text-lg)/1.2 var(--font-display);
+  letter-spacing: var(--tracking-display);
+  color: var(--color-ink);
+  text-wrap: balance;
+}
+
+/* Read state as a mark, not a tag: filled tick + the word. */
+.ntf-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  margin-top: 2px;
+  min-height: 20px;
+  padding: 0 var(--space-xs);
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: 4px;
+  background: var(--color-paper-2);
+  font: 500 var(--text-xs)/1 var(--font-body);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.ntf-state__tick {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 1px;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+.ntf-state.is-unread {
+  border-color: var(--color-accent-2);
+  background: var(--color-accent-wash);
+  color: var(--color-accent-deep);
+}
+
+.ntf-state.is-unread .ntf-state__tick {
+  background: currentColor;
+}
+
+.ntf-record__note {
+  max-width: 64ch;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--color-ink-2);
+}
+
+/* ── The fact grid ───────────────────────────────────────────────────────── */
+
+.ntf-grid {
+  --ntf-fact-mark: 15px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-lg);
+  margin: 0;
+  border-top: var(--rule-hair) solid var(--color-rule);
+}
+
+.ntf-fact {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-xs) 0;
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+/* A lone last fact takes the full width, so the grid never ends on a half rule. */
+.ntf-fact:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.ntf-fact__label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  font: 500 var(--text-xs)/1.3 var(--font-body);
+  color: var(--color-muted);
+}
+
+.ntf-fact__mark {
+  display: grid;
+  place-items: center;
+  width: var(--ntf-fact-mark);
+  height: var(--ntf-fact-mark);
+  flex: none;
+  color: var(--color-muted);
+}
+
+.ntf-fact__mark .vis-glyph {
+  stroke-width: 1.7;
+}
+
+.ntf-fact__dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 1px;
+  background: var(--color-rule-2);
+}
+
+.ntf-fact__value {
+  margin: 0;
+  padding-left: calc(var(--ntf-fact-mark) + var(--space-2xs));
+  font: 500 var(--text-sm)/1.35 var(--font-display);
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* ── Quote: the reviewer's words, ruled ──────────────────────────────────── */
+
+.ntf-quote {
+  display: grid;
+  gap: var(--space-3xs);
+  margin: 0;
+  padding: var(--space-xs) var(--space-md);
+  border-left: 2px solid var(--color-accent-2);
+  background: var(--color-paper-2);
+}
+
+.ntf-quote.is-negative {
+  border-left-color: var(--color-negative);
+}
+
+.ntf-quote__label {
+  font: 500 var(--text-xs)/1.3 var(--font-body);
+  color: var(--color-muted);
+}
+
+.ntf-quote__text {
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--color-ink);
+}
+
+.ntf-record__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  padding-top: var(--space-sm);
+  border-top: var(--rule-hair) solid var(--color-rule);
+}
+
+.ntf-record__foot .ui-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── Empty, error, loading ───────────────────────────────────────────────── */
+
+.ntf-empty {
+  margin: var(--space-md);
+}
+
+.ntf-empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-top: var(--space-2xs);
+}
+
+.ntf-error {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.ntf-error__actions {
+  justify-self: start;
+}
+
+.ntf-skel {
+  padding: 0;
+}
+
+.ntf-skel__row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  column-gap: var(--space-sm);
+  align-items: start;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.ntf-skel__mark {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-input);
+}
+
+.ntf-skel__lines {
+  display: grid;
+  gap: var(--space-xs);
+  padding-top: 2px;
+}
+
+.ntf-skel__title {
+  width: 44%;
+  height: 11px;
+}
+
+.ntf-skel__body {
+  width: 82%;
+  height: 9px;
+}
+
+/* ── Motion ──────────────────────────────────────────────────────────────── */
+
+@keyframes ntf-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ntf-pagehead {
+  animation: ntf-row-in 260ms var(--ease-out) both;
+}
+
+.ntf-inbox {
+  animation: ntf-row-in 260ms var(--ease-out) 40ms both;
+}
+
+@keyframes ntf-settle {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ntf-record-in {
+  from {
+    opacity: 0.35;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── Narrow: one column, list and record swap ────────────────────────────── */
+
+@media (max-width: 959px) {
+  .ntf-body {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  /* The record takes the whole narrow screen; the filters belong to the list. */
+  .ntf-inbox.is-reading .ntf-bar {
+    display: none;
+  }
+
+  .ntf-column {
+    border-right: 0;
+  }
+
+  .ntf-list {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .ntf-day {
+    position: static;
+  }
+
+  /* Nothing is selected until the reader opens it: no selection tint in the list. */
+  .ntf-body:not(.is-reading) .ntf-row.is-selected {
+    background: transparent;
+  }
+
+  .ntf-body:not(.is-reading) .ntf-row.is-selected::before {
+    display: none;
+  }
+
+  .ntf-pane {
+    display: none;
+    border-top: 0;
+  }
+
+  .ntf-body.is-reading .ntf-column {
+    display: none;
+  }
+
+  .ntf-body.is-reading .ntf-pane {
+    display: block;
+  }
+
+  .ntf-record {
+    max-height: none;
+    padding: var(--space-md);
+  }
+
+  .ntf-back {
+    display: inline-flex;
+  }
+
+  .ntf-record__title {
+    font-size: var(--text-md);
+  }
+
+  .ntf-bar {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 700px) {
+  /* The arrival strip drops under the filters, strip left, total right. */
+  .ntf-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-xs);
+  }
+
+  .ntf-vol {
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 560px) {
+  .ntf-row__hit {
+    grid-template-columns: 5px 30px minmax(0, 1fr);
+    column-gap: var(--space-xs);
+    padding-left: var(--space-sm);
+  }
+
+  .ntf-row__flag {
+    margin-top: calc(var(--space-sm) + var(--space-2xs));
+  }
+
+  .ntf-mark {
+    width: 30px;
+    height: 30px;
+  }
+
+  .ntf-mark svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .ntf-row__aside {
+    width: 54px;
+    padding-right: var(--space-sm);
+  }
+
+  .ntf-record__head {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .ntf-state {
+    grid-column: 2;
+    justify-self: start;
+    margin-top: 0;
+  }
+
+  .ntf-grid {
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: 0;
+  }
+
+  .ntf-menu {
+    right: auto;
+    left: 0;
+  }
+
+  .ntf-bar {
+    padding: var(--space-xs) var(--space-sm);
+  }
+}
+
+/* ── Touch: the tools are part of the row, not a hover reward ────────────── */
+
+@media (hover: none) {
+  .ntf-row__tools {
+    display: none;
+  }
+}
+
+/* ── Motion floor ────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .ntf,
+  .ntf *,
+  .ntf *::before,
+  .ntf *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

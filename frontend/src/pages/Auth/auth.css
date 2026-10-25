@@ -1,0 +1,878 @@
+/* Hallmark · shape: auth gate · genre: modern-minimal · theme: Cobalt
+ * surfaces: graphite story plate, paper sheet · signature: the cut-corner frame
+ * and the campus drawn in hairlines · posture: quiet · motion: one 460ms slide
+ * ═══════════════════════════════════════════════════════════════════════════
+   Authentication · Cobalt
+   /login and /register: the landing page's quieter sibling. A graphite story
+   plate (the rail's own tone) against a paper sheet, one cobalt signal, the
+   app's keycap primary, hairline fields and the same focus ring.
+
+   Every value is a token. No indigo, no gold, no second typeface.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+#app:has(.auth-gate) {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 100dvh;
+  overflow: visible;
+  background: var(--color-paper);
+}
+
+.auth-gate {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: var(--space-lg);
+  background: var(--color-paper);
+  color: var(--color-ink-2);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── The frame ───────────────────────────────────────────────────────────── */
+
+.auth-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.04fr) minmax(0, 0.96fr);
+  width: min(1180px, 100%);
+  min-height: min(720px, calc(100dvh - var(--space-2xl)));
+  overflow: hidden;
+  background: var(--color-sheet);
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: var(--radius-card) 0 var(--radius-card) 0;
+  box-shadow: var(--shadow-lift);
+}
+
+.auth-shell--wide { width: min(1180px, 100%); }
+
+/* Two cut corners, the same gesture as the shell mark and the palette panel. */
+@supports (corner-shape: bevel) {
+  .auth-shell {
+    border-radius: var(--cut-l) 0 var(--cut-l) 0;
+    corner-shape: bevel round bevel round;
+  }
+}
+
+/* ── Story plate ─────────────────────────────────────────────────────────── */
+
+.auth-story {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--space-xl) var(--space-xl) var(--space-lg);
+  overflow: hidden;
+  color: var(--color-graphite-ink);
+  background:
+    radial-gradient(
+      100% 70% at 4% -6%,
+      color-mix(in oklab, var(--color-accent) 24%, transparent) 0%,
+      transparent 62%
+    ),
+    linear-gradient(168deg, var(--color-graphite) 0%, var(--color-graphite-2) 100%);
+  border-inline-end: var(--rule-hair) solid var(--color-graphite-2);
+}
+
+.auth-story__top { display: flex; align-items: center; }
+
+.auth-wordmark {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius-input);
+}
+.auth-wordmark:hover .auth-wordmark__name { color: var(--color-accent-2); }
+.auth-wordmark:focus-visible {
+  outline: 2px solid var(--color-accent-2);
+  outline-offset: 3px;
+}
+
+.auth-wordmark__mark {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: var(--radius-input) var(--space-3xs) var(--radius-input) var(--space-3xs);
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  font: 600 var(--text-sm)/1 var(--font-display);
+  box-shadow: var(--shadow-inset-highlight);
+}
+@supports (corner-shape: bevel) {
+  .auth-wordmark__mark {
+    border-radius: var(--cut) var(--space-3xs) var(--cut) var(--space-3xs);
+    corner-shape: bevel round bevel round;
+  }
+}
+
+.auth-wordmark__text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.auth-wordmark__name {
+  font: 600 var(--text-sm)/1.2 var(--font-display);
+  letter-spacing: -0.015em;
+  color: var(--color-graphite-ink);
+  white-space: nowrap;
+  transition: color var(--dur-short) var(--ease-in-out);
+}
+
+.auth-wordmark__place {
+  font: 400 0.6875rem/1.2 var(--font-body);
+  color: var(--color-graphite-muted);
+  white-space: nowrap;
+}
+
+/* The slide region is a fixed measure so the panel does not jump between
+   slides; only the copy inside it does. */
+.auth-story__copy {
+  margin-top: var(--space-2xl);
+  min-height: 184px;
+}
+
+.auth-slide { animation: auth-slide-in var(--dur-long) var(--ease-out) both; }
+
+@keyframes auth-slide-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+.auth-eyebrow {
+  margin: 0 0 var(--space-sm);
+  font: 600 var(--text-xs)/1.4 var(--font-body);
+  letter-spacing: normal;
+  color: var(--color-graphite-muted);
+}
+
+.auth-eyebrow__sep {
+  margin-inline: var(--space-2xs);
+  color: var(--color-accent-2);
+}
+
+.auth-story__title {
+  margin: 0;
+  font: 600 clamp(2rem, 2.1vw + 0.9rem, 2.75rem)/1.08 var(--font-display);
+  letter-spacing: var(--tracking-display);
+  color: var(--color-graphite-ink);
+  text-wrap: balance;
+}
+
+.auth-lede {
+  max-width: 34ch;
+  margin: var(--space-sm) 0 0;
+  font-size: var(--text-sm);
+  line-height: 1.65;
+  color: var(--color-graphite-muted);
+}
+
+.auth-story__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-height: 22px;
+  margin-top: auto;
+  padding-top: var(--space-xs);
+}
+
+.auth-foot-note {
+  margin: 0;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--color-graphite-muted);
+}
+
+/* A three-step machined scale: each track keeps its footprint, only the fill
+   stretches, so the indicator never reflows. 24px hit area per step. */
+.auth-dots { display: flex; flex: none; align-items: center; gap: var(--space-2xs); }
+
+.auth-dots button {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.auth-dots button::before {
+  content: "";
+  position: absolute;
+  left: var(--space-2xs);
+  right: var(--space-2xs);
+  top: calc(50% - 1.5px);
+  height: 3px;
+  border-radius: 1px;
+  background: color-mix(in oklab, var(--color-graphite-ink) 48%, transparent);
+  transform: scaleX(0.55);
+  transform-origin: left center;
+  transition:
+    transform var(--dur-short) var(--ease-out),
+    background-color var(--dur-short) var(--ease-in-out);
+}
+.auth-dots button:hover::before { background: color-mix(in oklab, var(--color-graphite-ink) 60%, transparent); }
+.auth-dots button.is-active::before {
+  transform: none;
+  background: var(--color-accent-2);
+}
+.auth-dots button.is-active:hover::before { background: var(--color-accent-2); }
+.auth-dots button:active::before { background: var(--color-accent-ink); }
+.auth-dots button:focus-visible {
+  outline: 2px solid var(--color-accent-2);
+  outline-offset: 1px;
+}
+
+/* ── The sheet ───────────────────────────────────────────────────────────── */
+
+.auth-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--space-2xl) clamp(var(--space-lg), 4vw, var(--space-2xl)) var(--space-md);
+  background: var(--color-sheet);
+}
+
+.auth-panel__inner {
+  width: 100%;
+  max-width: 380px;
+  min-width: 0;
+  margin: auto;
+}
+
+/* The register sheet carries four rows of fields; it starts higher so the
+   frame still fits a 1280×800 laptop without a scrollbar. */
+.auth-shell--wide .auth-panel__inner { max-width: 508px; }
+.auth-shell--wide .auth-panel { padding-top: var(--space-xl); }
+
+.auth-head { margin-bottom: var(--space-lg); }
+
+.auth-head__title {
+  margin: 0;
+  font: 600 var(--text-2xl)/1.1 var(--font-display);
+  letter-spacing: var(--tracking-display);
+  color: var(--color-ink);
+}
+
+.auth-head__sub {
+  margin: var(--space-xs) 0 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--color-muted);
+}
+
+.auth-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+  padding: var(--space-xs) var(--space-sm);
+  border: var(--rule-hair) solid var(--color-negative);
+  border-left-width: 3px;
+  border-radius: var(--radius-input);
+  background: var(--color-negative-wash);
+  color: var(--color-negative);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+/* ── Form ────────────────────────────────────────────────────────────────── */
+
+.auth-form { display: grid; gap: var(--space-md); }
+
+.auth-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm) var(--space-md);
+}
+
+.auth-line {
+  display: grid;
+  gap: var(--space-2xs);
+  min-width: 0;
+}
+
+.auth-line--full { grid-column: 1 / -1; }
+
+.auth-req { color: var(--color-muted); }
+
+/* The app field, at the auth scale: 44px, same hairline, same ring. */
+.auth-gate .auth-input__field { min-height: 44px; }
+
+.auth-gate input.ui-field,
+.auth-gate select.ui-field,
+.auth-gate textarea.ui-field {
+  background: var(--color-sheet);
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: var(--radius-input);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.auth-gate input.ui-field:focus,
+.auth-gate select.ui-field:focus,
+.auth-gate textarea.ui-field:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-wash);
+}
+
+.auth-gate input.ui-field[aria-invalid="true"],
+.auth-gate select.ui-field[aria-invalid="true"],
+.auth-gate textarea.ui-field[aria-invalid="true"] { border-color: var(--color-negative); }
+
+.auth-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.auth-input__icon {
+  position: absolute;
+  left: var(--space-sm);
+  width: 16px;
+  height: 16px;
+  color: var(--color-muted);
+  pointer-events: none;
+}
+
+.auth-gate .auth-input--action input { padding-right: calc(var(--space-xl) + var(--space-2xs)); }
+.auth-gate .auth-input .auth-input__field { padding-left: var(--space-xl); }
+
+.auth-reveal {
+  position: absolute;
+  right: var(--space-3xs);
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-input);
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: color var(--dur-short) var(--ease-in-out), background-color var(--dur-short) var(--ease-in-out);
+}
+.auth-reveal svg { width: 18px; height: 18px; }
+.auth-reveal:hover:not(:disabled) { color: var(--color-ink); background: var(--color-paper-2); }
+.auth-reveal:active:not(:disabled) { background: var(--color-paper-3); }
+.auth-reveal:disabled { cursor: not-allowed; opacity: 0.5; }
+.auth-reveal:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+
+.auth-select { position: relative; display: flex; min-width: 0; }
+.auth-gate .auth-select select { padding-right: var(--space-xl); }
+.auth-select__chev {
+  position: absolute;
+  right: var(--space-sm);
+  width: 16px;
+  height: 16px;
+  color: var(--color-muted);
+  pointer-events: none;
+}
+
+.auth-gate textarea.ui-field--area { padding: var(--space-xs) var(--space-sm); }
+
+/* One cobalt key, the app's large primary. The arrow is drawn, not typed. */
+.auth-go { margin-top: var(--space-2xs); }
+.auth-go__arrow { display: inline-grid; place-items: center; }
+.auth-go__arrow svg { width: 16px; height: 16px; }
+
+.auth-spinner {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 2px solid color-mix(in oklab, var(--color-accent-ink) 38%, transparent);
+  border-top-color: var(--color-accent-ink);
+  border-radius: var(--radius-pill);
+  animation: auth-spin var(--dur-slow) linear infinite;
+}
+
+@keyframes auth-spin { to { transform: rotate(360deg); } }
+
+.auth-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2xs);
+  margin: calc(var(--space-2xs) * -1) 0 0;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--color-muted);
+}
+.auth-note svg { width: 13px; height: 13px; flex: none; color: var(--color-positive); }
+
+.auth-alt {
+  margin: var(--space-lg) 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+.auth-alt a {
+  color: var(--color-accent-deep);
+  font-weight: 500;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--dur-short) var(--ease-in-out);
+}
+.auth-alt a:hover { border-bottom-color: currentColor; }
+.auth-alt a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+.auth-foot-line {
+  margin: auto 0 0;
+  padding-top: var(--space-lg);
+  font-size: 0.625rem;
+  color: var(--color-muted);
+  text-align: center;
+}
+.auth-foot-line span { margin-inline: var(--space-2xs); color: var(--color-accent); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   The illustration: CSS geometry on the graphite plate, re-inked in paper,
+   graphite and cobalt. Decorative only — the whole region is aria-hidden.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.auth-art {
+  position: relative;
+  flex: 1;
+  min-height: 236px;
+  max-height: 320px;
+  margin: var(--space-md) calc(var(--space-lg) * -1) var(--space-xs);
+}
+
+/* ── Slide 0: campus ─────────────────────────────────────────────────────── */
+
+.auth-orbit {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  border: var(--rule-hair) solid color-mix(in oklab, var(--color-graphite-ink) 16%, transparent);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.auth-orbit--one { width: 78%; aspect-ratio: 2.1; }
+.auth-orbit--two { width: 60%; aspect-ratio: 2.2; }
+
+.auth-spark {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  background: var(--color-accent-2);
+  transform: rotate(45deg);
+}
+.auth-spark--one { top: 15%; left: 25%; }
+.auth-spark--two { top: 33%; right: 21%; width: 4px; height: 4px; opacity: 0.7; }
+
+.auth-note-card {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: var(--radius-input) var(--space-3xs) var(--radius-input) var(--space-3xs);
+  background: var(--color-sheet);
+  color: var(--color-ink);
+  box-shadow: var(--shadow-lift);
+}
+.auth-note-card--club { top: 20%; left: 0; }
+.auth-note-card--project { right: 0; bottom: 17%; }
+
+.auth-note-card__icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 4px;
+  background: var(--color-accent-wash);
+  color: var(--color-accent-deep);
+}
+.auth-note-card__icon svg { width: 17px; height: 17px; }
+
+.auth-note-card__text strong {
+  display: block;
+  font: 600 0.6875rem/1.2 var(--font-display);
+  letter-spacing: -0.01em;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+.auth-note-card__text small {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.625rem;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.auth-campus {
+  position: absolute;
+  bottom: 6%;
+  left: 50%;
+  width: 196px;
+  height: 128px;
+  transform: translateX(-50%);
+}
+
+.auth-campus__sun {
+  position: absolute;
+  top: -16%;
+  left: 50%;
+  width: 90px;
+  height: 90px;
+  border: var(--rule-hair) solid color-mix(in oklab, var(--color-accent-2) 60%, transparent);
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--color-accent) 14%, transparent);
+  transform: translateX(-50%);
+}
+
+.auth-building {
+  position: absolute;
+  inset: 0;
+}
+
+.auth-building__roof {
+  position: absolute;
+  top: 0;
+  left: 2px;
+  width: 192px;
+  height: 28px;
+  background: var(--color-paper-2);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.auth-building__top {
+  position: absolute;
+  top: 28px;
+  left: 19px;
+  display: flex;
+  width: 156px;
+  height: 19px;
+  justify-content: space-around;
+  border-top: 2px solid var(--color-rule-2);
+  border-bottom: var(--rule-hair) solid var(--color-rule-2);
+  background: var(--color-paper-2);
+}
+.auth-building__top i {
+  width: 4px;
+  height: 12px;
+  margin-top: 2px;
+  background: var(--color-rule-2);
+}
+
+.auth-building__columns {
+  position: absolute;
+  top: 47px;
+  left: 24px;
+  display: flex;
+  width: 146px;
+  height: 59px;
+  justify-content: space-around;
+  background: var(--color-paper-3);
+}
+.auth-building__columns i {
+  width: 8px;
+  height: 100%;
+  background: var(--color-paper);
+  border-inline: var(--rule-hair) solid var(--color-rule-2);
+}
+
+.auth-building__steps {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 17px;
+  border-top: 5px solid var(--color-rule-2);
+  border-bottom: 5px solid var(--color-rule);
+  background: var(--color-paper-2);
+}
+
+.auth-campus__ground {
+  position: absolute;
+  bottom: -6px;
+  left: -8%;
+  width: 116%;
+  height: var(--rule-hair);
+  background: color-mix(in oklab, var(--color-graphite-ink) 20%, transparent);
+}
+
+/* ── Slide 1: the community ──────────────────────────────────────────────── */
+
+.auth-web { position: absolute; inset: 0; }
+
+.auth-web__ring {
+  position: absolute;
+  top: 24%;
+  left: 50%;
+  width: 62%;
+  height: 44%;
+  border: var(--rule-hair) solid color-mix(in oklab, var(--color-graphite-ink) 20%, transparent);
+  border-radius: 50%;
+  transform: translateX(-50%) rotate(-16deg);
+}
+.auth-web__ring::before,
+.auth-web__ring::after {
+  position: absolute;
+  content: "";
+  inset: 12% 18%;
+  border: var(--rule-hair) solid color-mix(in oklab, var(--color-graphite-ink) 14%, transparent);
+  border-radius: 50%;
+  transform: rotate(46deg);
+}
+.auth-web__ring::after { transform: rotate(-46deg); }
+
+.auth-web__node {
+  position: absolute;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: 50%;
+  background: var(--color-sheet);
+  color: var(--color-accent-deep);
+  box-shadow: var(--shadow-lift);
+}
+.auth-web__node svg { width: 17px; height: 17px; }
+.auth-web__node--one { top: 22%; left: 33%; }
+.auth-web__node--two { top: 45%; right: 32%; }
+.auth-web__node--three { bottom: 24%; left: 42%; }
+.auth-web__node--four { top: 42%; left: 22%; }
+
+.auth-web__card {
+  position: absolute;
+  z-index: 2;
+  width: 126px;
+  padding: var(--space-xs);
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: var(--radius-input);
+  background: var(--color-sheet);
+  box-shadow: var(--shadow-lift);
+}
+.auth-web__card--one { top: 26%; right: 4%; }
+.auth-web__card--two { bottom: 16%; left: 4%; }
+.auth-web__card span {
+  font: 600 0.625rem/1 var(--font-body);
+  letter-spacing: normal;
+  color: var(--color-muted);
+}
+.auth-web__card i {
+  display: block;
+  width: 100%;
+  height: 3px;
+  margin-top: var(--space-2xs);
+  border-radius: 1px;
+  background: var(--color-paper-3);
+}
+.auth-web__card i:nth-child(3) { width: 78%; }
+.auth-web__card i:nth-child(4) { width: 54%; background: var(--color-accent-2); }
+
+/* ── Slide 2: the blueprint ──────────────────────────────────────────────── */
+
+.auth-blueprint { position: absolute; inset: 0; }
+
+.auth-blueprint__grid {
+  position: absolute;
+  inset: 6% 10%;
+  opacity: 0.45;
+  background-image:
+    linear-gradient(var(--color-rule) var(--rule-hair), transparent var(--rule-hair)),
+    linear-gradient(90deg, var(--color-rule) var(--rule-hair), transparent var(--rule-hair));
+  background-size: 24px 24px;
+  mask-image: radial-gradient(ellipse at center, var(--color-graphite-ink) 12%, transparent 74%);
+}
+
+.auth-blueprint__code {
+  position: absolute;
+  top: 18%;
+  left: 50%;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-xs);
+  width: 184px;
+  height: 124px;
+  padding: var(--space-md) var(--space-sm);
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: var(--radius-card);
+  background: var(--color-sheet);
+  box-shadow: var(--shadow-lift);
+  transform: translateX(-50%) rotate(-4deg);
+}
+.auth-blueprint__code span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-glyph-2);
+}
+.auth-blueprint__code span:nth-child(2) { background: var(--color-glyph-3); }
+.auth-blueprint__code span:nth-child(3) { background: var(--color-accent-2); }
+.auth-blueprint__code i {
+  grid-column: span 3;
+  height: 4px;
+  border-radius: 1px;
+  background: var(--color-paper-3);
+}
+.auth-blueprint__code i:nth-of-type(2) { width: 71%; background: var(--color-glyph-2); }
+.auth-blueprint__code i:nth-of-type(3) { width: 84%; }
+.auth-blueprint__code i:nth-of-type(4) { width: 59%; background: var(--color-glyph-1); }
+
+.auth-blueprint__node {
+  position: absolute;
+  z-index: 1;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--color-accent-2);
+  border-radius: 50%;
+  background: var(--color-graphite);
+  box-shadow: 0 0 0 5px color-mix(in oklab, var(--color-accent) 16%, transparent);
+}
+.auth-blueprint__node--one { top: 25%; left: 21%; }
+.auth-blueprint__node--two { top: 43%; right: 19%; }
+.auth-blueprint__node--three { bottom: 17%; left: 45%; }
+
+.auth-blueprint__link {
+  position: absolute;
+  height: var(--rule-hair);
+  background: color-mix(in oklab, var(--color-accent-2) 55%, transparent);
+  transform-origin: left center;
+}
+.auth-blueprint__link--one { top: 30%; left: 23%; width: 106px; transform: rotate(13deg); }
+/* Card edge → the right-hand node, so no connector dangles. */
+.auth-blueprint__link--two { top: 41%; left: 64%; width: 104px; transform: rotate(16deg); }
+
+.auth-blueprint__chip {
+  position: absolute;
+  right: 7%;
+  bottom: 11%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: var(--radius-input) var(--space-3xs) var(--radius-input) var(--space-3xs);
+  background: var(--color-sheet);
+  color: var(--color-accent-deep);
+  font: 600 0.625rem/1 var(--font-body);
+  letter-spacing: normal;
+  box-shadow: var(--shadow-lift);
+}
+.auth-blueprint__chip svg { width: 14px; height: 14px; color: var(--color-muted); }
+
+/* ── Narrow: the plate becomes a compact header ──────────────────────────── */
+
+@media (max-width: 62rem) {
+  .auth-gate { padding: var(--space-lg) var(--space-md); }
+
+  .auth-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    align-content: start;
+    width: min(560px, 100%);
+    min-height: 0;
+  }
+  .auth-shell--wide { width: min(640px, 100%); }
+
+  .auth-story {
+    padding: var(--space-lg) var(--space-lg) var(--space-sm);
+    border-inline-end: 0;
+    border-bottom: var(--rule-hair) solid var(--color-graphite-2);
+  }
+
+  .auth-story__copy { margin-top: var(--space-lg); min-height: 0; }
+  .auth-story__title { font-size: clamp(1.5rem, 4vw, 1.875rem); }
+  .auth-lede { max-width: 52ch; }
+  .auth-art { display: none; }
+  .auth-story__foot { margin-top: var(--space-sm); padding-top: 0; }
+
+  .auth-panel { padding: var(--space-xl) var(--space-lg) var(--space-md); }
+  .auth-panel__inner,
+  .auth-shell--wide .auth-panel__inner { max-width: none; }
+}
+
+@media (max-width: 40rem) {
+  .auth-gate { display: block; padding: 0; background: var(--color-sheet); }
+
+  .auth-shell,
+  .auth-shell--wide {
+    width: 100%;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .auth-story {
+    padding: var(--space-md) var(--space-lg) var(--space-sm);
+    border-radius: 0;
+  }
+  .auth-wordmark__place { display: none; }
+  .auth-story__copy { margin-top: var(--space-md); }
+  .auth-story__title { font-size: 1.625rem; }
+  .auth-lede { display: none; }
+  .auth-eyebrow { margin-bottom: var(--space-xs); }
+
+  /* The slide control moves up beside the wordmark, so the permission note
+     keeps the full width and stays on one line. */
+  .auth-dots {
+    position: absolute;
+    top: calc(var(--space-md) + 3px);
+    right: var(--space-lg);
+  }
+  .auth-story__foot { min-height: 16px; }
+
+  .auth-panel { padding: var(--space-lg) var(--space-lg) var(--space-md); }
+  .auth-panel__inner { margin: 0 auto; }
+  .auth-head { margin-bottom: var(--space-md); }
+  .auth-head__title { font-size: var(--text-xl); }
+  .auth-fields { grid-template-columns: minmax(0, 1fr); }
+  .auth-foot-line { padding-top: var(--space-lg); }
+}
+
+/* ── Motion floor ────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-gate *,
+  .auth-gate *::before,
+  .auth-gate *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .auth-slide { animation: none !important; }
+}
+
+/* Self-registration creates students: a role is an authorisation claim, not a
+   preference. Staff accounts are provisioned, so the field is a statement. */
+.auth-fixed {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 44px;
+  padding: 0 var(--space-sm);
+  border: var(--rule-hair) solid var(--color-rule);
+  border-radius: var(--radius-input);
+  background: var(--color-paper-2);
+  color: var(--color-ink);
+  font: 500 var(--text-sm)/1 var(--font-display);
+}
+.auth-fixed svg {
+  width: 16px;
+  height: 16px;
+  color: var(--color-accent);
+}

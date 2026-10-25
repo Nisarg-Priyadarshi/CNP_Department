@@ -2,11 +2,12 @@ import { useAuth } from '../../context/AuthContext';
 import { LandingNav } from '../../components/landing/LandingNav';
 import { LandingHero } from '../../components/landing/LandingHero';
 import { LandingSections } from '../../components/landing/LandingSections';
+import { LandingClose } from '../../components/landing/LandingClose';
 import { LandingFooter } from '../../components/landing/LandingFooter';
 
 /**
- * Public front page at "/". Everyone, signed in or not, sees the hero animation; only the
- * buttons differ (Log in vs Open dashboard). Reduced-motion users get the static scene via CSS.
+ * Public front page at "/". Everyone, signed in or not, reads the same page; only
+ * the action changes (Log in vs Open dashboard).
  */
 export default function Landing() {
   const { user } = useAuth();
@@ -15,10 +16,11 @@ export default function Landing() {
   return (
     <div className="landing">
       <LandingNav signedIn={signedIn} />
-      <div className="landing-main">
+      <main id="content">
         <LandingHero signedIn={signedIn} />
         <LandingSections />
-      </div>
+        <LandingClose signedIn={signedIn} />
+      </main>
       <LandingFooter />
     </div>
   );
