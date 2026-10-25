@@ -99,6 +99,8 @@ userSchema.set('toJSON', {
   },
 });
 
-const User = mongoose.model('User', userSchema);
+// Role dropdowns and the admin/coordinator people pickers.
+userSchema.index({ role: 1, name: 1 });
 
+const User = mongoose.model('User', userSchema);
 export default User;

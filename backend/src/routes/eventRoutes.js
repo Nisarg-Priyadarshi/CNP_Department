@@ -41,6 +41,7 @@ import {
   buildEventCreatedMessage,
   checkAndSendEventReminders,
 } from '../services/eventReminderService.js';
+import { monthRange, parsePagination, queryDate, sendError } from '../lib/http.js';
 
 const router = express.Router();
 
@@ -218,7 +219,7 @@ router.post(
         data: event,
       });
     } catch (error) {
-      return res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );
@@ -238,10 +239,24 @@ router.get('/upcoming', requireAuth, async (req, res) => {
     }
     if (!req.query.from) requestedStart.setHours(0, 0, 0, 0);
 
-    const events = await Event.find({ eventDate: { $gte: requestedStart } })
+    const filter = { eventDate: { $gte: requestedStart } };
+
+    const clubId = req.query.clubId;
+    if (clubId !== undefined && clubId !== '') {
+      if (!isValidObjectId(clubId)) {
+        return res.status(400).json({ success: false, message: 'Invalid clubId format' });
+      }
+      filter.clubId = clubId;
+    }
+
+    const { limit } = parsePagination(req.query, { defaultLimit: 100, maxLimit: 500 });
+
+    const events = await Event.find(filter)
       .populate('clubId', 'name description facultyCoordinatorId logo coverImage')
       .populate('createdBy', 'name email role department semester')
-      .sort({ eventDate: 1 }); // Soonest first
+      .sort({ eventDate: 1 }) // Soonest first
+      .limit(limit)
+      .lean();
 
     return res.status(200).json({
       success: true,
@@ -249,7 +264,65 @@ router.get('/upcoming', requireAuth, async (req, res) => {
       data: events,
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// B2. EVENT SUMMARY
+// GET /api/events/summary?month=YYYY-MM
+// Real aggregate for the month panel + "Clubs this month" rail.
+// Must be registered before GET /:eventId.
+// ══════════════════════════════════════════════════════════════════════════════
+
+router.get('/summary', requireAuth, async (req, res) => {
+  try {
+    const range = monthRange(req.query.month);
+    if (range.provided && !range.valid) {
+      return res.status(400).json({ success: false, message: 'month must be in YYYY-MM format' });
+    }
+
+    const match = {};
+    if (range.provided) match.eventDate = { $gte: range.start, $lt: range.end };
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    const [total, upcoming, byClubRows] = await Promise.all([
+      Event.countDocuments(match),
+      Event.countDocuments({ ...match, eventDate: { ...(match.eventDate || {}), $gte: match.eventDate ? new Date(Math.max(match.eventDate.$gte.getTime(), now.getTime())) : now } }),
+      Event.aggregate([
+        { $match: match },
+        { $group: { _id: '$clubId', count: { $sum: 1 } } },
+        { $sort: { count: -1, _id: 1 } },
+        { $limit: 50 },
+        {
+          $lookup: {
+            from: 'clubs',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'club',
+            pipeline: [{ $project: { name: 1 } }],
+          },
+        },
+        { $unwind: { path: '$club', preserveNullAndEmptyArrays: true } },
+      ]),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        total,
+        upcoming,
+        byClub: byClubRows.map((row) => ({
+          clubId: row._id,
+          name: row.club?.name || 'Unknown club',
+          count: row.count,
+        })),
+      },
+    });
+  } catch (error) {
+    return sendError(res, error);
   }
 });
 
@@ -259,12 +332,51 @@ router.get('/upcoming', requireAuth, async (req, res) => {
 // Returns ALL events (upcoming + past), sorted by eventDate desc.
 // ══════════════════════════════════════════════════════════════════════════════
 
-router.get('/', requireAuth, async (_req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   try {
-    const events = await Event.find()
+    const filter = {};
+
+    const clubId = req.query.clubId;
+    if (clubId !== undefined && clubId !== '') {
+      if (!isValidObjectId(clubId)) {
+        return res.status(400).json({ success: false, message: 'Invalid clubId format' });
+      }
+      filter.clubId = clubId;
+    }
+
+    // ?month=YYYY-MM takes precedence; otherwise ?from=&to= (inclusive `to` day start).
+    const range = monthRange(req.query.month);
+    if (range.provided && !range.valid) {
+      return res.status(400).json({ success: false, message: 'month must be in YYYY-MM format' });
+    }
+
+    if (range.provided) {
+      filter.eventDate = { $gte: range.start, $lt: range.end };
+    } else {
+      const from = queryDate(req.query.from);
+      const to = queryDate(req.query.to);
+      if (from === undefined || to === undefined) {
+        return res.status(400).json({ success: false, message: 'from/to must be valid dates' });
+      }
+      if (from || to) {
+        if (from && to && from > to) {
+          return res.status(400).json({ success: false, message: 'from must be before to' });
+        }
+        filter.eventDate = {};
+        if (from) filter.eventDate.$gte = from;
+        if (to) filter.eventDate.$lt = to;
+      }
+    }
+
+    const { limit, skip } = parsePagination(req.query, { defaultLimit: 200, maxLimit: 500 });
+
+    const events = await Event.find(filter)
       .populate('clubId', 'name description facultyCoordinatorId logo coverImage')
       .populate('createdBy', 'name email role department semester')
-      .sort({ eventDate: -1 });
+      .sort({ eventDate: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
 
     return res.status(200).json({
       success: true,
@@ -272,7 +384,7 @@ router.get('/', requireAuth, async (_req, res) => {
       data: events,
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -299,7 +411,7 @@ router.get('/:eventId', requireAuth, async (req, res) => {
 
     return res.status(200).json({ success: true, data: event });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -438,7 +550,7 @@ router.put(
         data: event,
       });
     } catch (error) {
-      return res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );
@@ -491,7 +603,7 @@ router.delete(
         message: 'Event deleted successfully',
       });
     } catch (error) {
-      return res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );
@@ -509,7 +621,7 @@ router.post('/reminders/process', requireAuth, requireAnyRole('club_admin', 'fac
       processed,
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -537,7 +649,9 @@ clubEventsRouter.get('/:clubId/events', requireAuth, async (req, res) => {
     const events = await Event.find({ clubId })
       .populate('clubId', 'name description facultyCoordinatorId logo coverImage')
       .populate('createdBy', 'name email role department semester')
-      .sort({ eventDate: 1 });
+      .sort({ eventDate: 1 })
+      .limit(500)
+      .lean();
 
     return res.status(200).json({
       success: true,
@@ -546,7 +660,7 @@ clubEventsRouter.get('/:clubId/events', requireAuth, async (req, res) => {
       data: events,
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 

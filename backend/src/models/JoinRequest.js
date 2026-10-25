@@ -91,6 +91,35 @@ joinRequestSchema.index(
   { partialFilterExpression: { requestType: 'project' } }
 );
 
+// ── Uniqueness of the *pending* row ──────────────────────────────────────────
+// The indexes above are history-friendly (approved/rejected rows may repeat).
+// These partial unique indexes close the check-then-create race in
+// POST /clubs/:id/join and POST /projects/:id/join: two simultaneous requests
+// can no longer both succeed.
+joinRequestSchema.index(
+  { studentId: 1, clubId: 1 },
+  {
+    unique: true,
+    name: 'uniq_pending_club_join_request',
+    partialFilterExpression: { requestType: 'club', status: 'pending' },
+  }
+);
+joinRequestSchema.index(
+  { studentId: 1, projectId: 1 },
+  {
+    unique: true,
+    name: 'uniq_pending_project_join_request',
+    partialFilterExpression: { requestType: 'project', status: 'pending' },
+  }
+);
+
+// ── Reviewer queues / summaries ──────────────────────────────────────────────
+joinRequestSchema.index({ status: 1, createdAt: -1 });
+joinRequestSchema.index({ reviewerId: 1, status: 1, createdAt: -1 });
+joinRequestSchema.index({ studentId: 1, createdAt: -1 });
+joinRequestSchema.index({ clubId: 1, status: 1 });
+joinRequestSchema.index({ projectId: 1, status: 1 });
+
 const JoinRequest = mongoose.model('JoinRequest', joinRequestSchema);
 
 export default JoinRequest;

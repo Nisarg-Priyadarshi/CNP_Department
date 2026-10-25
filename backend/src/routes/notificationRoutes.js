@@ -24,14 +24,187 @@ import ProjectFeedback from '../models/ProjectFeedback.js';
 import JoinRequest from '../models/JoinRequest.js';
 import ProjectMaterial from '../models/ProjectMaterial.js';
 import { requireAuth } from '../middleware/requireAuth.js';
+import {
+  cursorFilter,
+  decodeCursor,
+  encodeCursor,
+  firstString,
+  isValidObjectId,
+  parsePagination,
+  sendError,
+} from '../lib/http.js';
 
 const router = express.Router();
+
+const MR_POPULATE = 'projectId inventoryItemId requestedBy reviewedBy';
+const MATERIAL_POPULATE = 'projectId addedBy';
+const UPDATE_POPULATE = 'projectId studentId';
+const FEEDBACK_POPULATE = 'mentorId projectId updateId';
+const JOIN_POPULATE = 'studentId clubId projectId';
+
+/**
+ * Request-scoped enrichment cache.
+ *
+ * The inbox used to do up to three queries *per row* (material request, project
+ * material, project update, feedback, join request, leader project). Building the
+ * context once per list batches those lookups by collection with `$in`, so a
+ * 100-row page costs a fixed handful of queries instead of ~200.
+ *
+ * Methods are async so a caller can still use the context for a single
+ * notification (e.g. a future detail endpoint) without preloading.
+ */
+function createEnrichmentContext() {
+  const maps = {
+    materialRequests: new Map(),
+    projectMaterials: new Map(),
+    updates: new Map(),
+    feedback: new Map(),
+    joinRequests: new Map(),
+  };
+  let leaderProject;
+  let leaderProjectLoaded = false;
+  const fallbackCache = new Map();
+
+  const put = (map, doc) => {
+    if (doc?._id) map.set(String(doc._id), doc);
+    return doc;
+  };
+
+  return {
+    maps,
+    async materialRequest(id) {
+      if (!id) return null;
+      const key = String(id);
+      if (maps.materialRequests.has(key)) return maps.materialRequests.get(key);
+      return put(maps.materialRequests, await MaterialRequest.findById(id).populate(MR_POPULATE));
+    },
+    async latestMaterialRequest(status) {
+      const cacheKey = `mr:${status}`;
+      if (fallbackCache.has(cacheKey)) return fallbackCache.get(cacheKey);
+      const projectId = await this.leaderProjectId();
+      let doc = null;
+      if (projectId) {
+        doc = await MaterialRequest.findOne({ projectId, status })
+          .populate(MR_POPULATE)
+          .sort({ updatedAt: -1 });
+        put(maps.materialRequests, doc);
+      }
+      fallbackCache.set(cacheKey, doc);
+      return doc;
+    },
+    async projectMaterial(id) {
+      if (!id) return null;
+      const key = String(id);
+      if (maps.projectMaterials.has(key)) return maps.projectMaterials.get(key);
+      return put(maps.projectMaterials, await ProjectMaterial.findById(id).populate(MATERIAL_POPULATE));
+    },
+    async update(id) {
+      if (!id) return null;
+      const key = String(id);
+      if (maps.updates.has(key)) return maps.updates.get(key);
+      return put(maps.updates, await ProjectUpdate.findById(id).populate(UPDATE_POPULATE));
+    },
+    async feedback(id) {
+      if (!id) return null;
+      const key = String(id);
+      if (maps.feedback.has(key)) return maps.feedback.get(key);
+      return put(maps.feedback, await ProjectFeedback.findById(id).populate(FEEDBACK_POPULATE));
+    },
+    async latestFeedback() {
+      if (fallbackCache.has('fb')) return fallbackCache.get('fb');
+      const projectId = await this.leaderProjectId();
+      let doc = null;
+      if (projectId) {
+        doc = await ProjectFeedback.findOne({ projectId })
+          .populate(FEEDBACK_POPULATE)
+          .sort({ createdAt: -1 });
+        put(maps.feedback, doc);
+      }
+      fallbackCache.set('fb', doc);
+      return doc;
+    },
+    async joinRequest(id) {
+      if (!id) return null;
+      const key = String(id);
+      if (maps.joinRequests.has(key)) return maps.joinRequests.get(key);
+      return put(maps.joinRequests, await JoinRequest.findById(id).populate(JOIN_POPULATE));
+    },
+    async leaderProjectId() {
+      if (!leaderProjectLoaded) {
+        leaderProjectLoaded = true;
+        leaderProject = await Project.findOne({ teamLeaderId: this.userId }).select('_id').lean();
+      }
+      return leaderProject?._id || null;
+    },
+    userId: null,
+  };
+}
+
+/**
+ * Preload every related entity a notification page can reference, in one batch
+ * per collection. Ids are grouped by the notification `type` so unrelated
+ * collections are never queried.
+ */
+async function buildEnrichmentContext(rawNotifications, userId) {
+  const ctx = createEnrichmentContext();
+  ctx.userId = userId;
+
+  const idsBy = {
+    materialRequests: new Set(),
+    projectMaterials: new Set(),
+    updates: new Set(),
+    feedback: new Set(),
+    joinRequests: new Set(),
+  };
+
+  for (const n of rawNotifications) {
+    if (!n.relatedId) continue;
+    const id = String(n.relatedId);
+    if (n.type.startsWith('material_request')) idsBy.materialRequests.add(id);
+    else if (n.type === 'material_added' || n.type === 'project_material_added') idsBy.projectMaterials.add(id);
+    else if (n.type === 'project_update') {
+      // relatedId is an update OR a feedback document — load both, they are cheap.
+      idsBy.updates.add(id);
+      idsBy.feedback.add(id);
+    } else if (n.type === 'club_join_request' || n.type === 'project_join_request'
+      || n.type === 'club_join_approved' || n.type === 'club_join_rejected'
+      || n.type === 'project_join_approved' || n.type === 'project_join_rejected') {
+      idsBy.joinRequests.add(id);
+    }
+  }
+
+  const [mrs, mats, updates, feedbacks, joins] = await Promise.all([
+    idsBy.materialRequests.size
+      ? MaterialRequest.find({ _id: { $in: [...idsBy.materialRequests] } }).populate(MR_POPULATE)
+      : [],
+    idsBy.projectMaterials.size
+      ? ProjectMaterial.find({ _id: { $in: [...idsBy.projectMaterials] } }).populate(MATERIAL_POPULATE)
+      : [],
+    idsBy.updates.size
+      ? ProjectUpdate.find({ _id: { $in: [...idsBy.updates] } }).populate(UPDATE_POPULATE)
+      : [],
+    idsBy.feedback.size
+      ? ProjectFeedback.find({ _id: { $in: [...idsBy.feedback] } }).populate(FEEDBACK_POPULATE)
+      : [],
+    idsBy.joinRequests.size
+      ? JoinRequest.find({ _id: { $in: [...idsBy.joinRequests] } }).populate(JOIN_POPULATE)
+      : [],
+  ]);
+
+  for (const doc of mrs) ctx.maps.materialRequests.set(String(doc._id), doc);
+  for (const doc of mats) ctx.maps.projectMaterials.set(String(doc._id), doc);
+  for (const doc of updates) ctx.maps.updates.set(String(doc._id), doc);
+  for (const doc of feedbacks) ctx.maps.feedback.set(String(doc._id), doc);
+  for (const doc of joins) ctx.maps.joinRequests.set(String(doc._id), doc);
+
+  return ctx;
+}
 
 /**
  * Dynamically enrich notifications with real project context, action links,
  * and rejection reasons when legacy or sparsely populated notifications are loaded.
  */
-async function enrichNotification(notif, userId) {
+async function enrichNotification(notif, userId, ctx) {
   const obj = notif.toObject ? notif.toObject() : { ...notif };
   obj.metadata = obj.metadata || {};
 
@@ -50,10 +223,7 @@ async function enrichNotification(notif, userId) {
       obj.link = '/material-requests';
     }
     try {
-      let mr = null;
-      if (obj.relatedId) {
-        mr = await MaterialRequest.findById(obj.relatedId).populate('projectId inventoryItemId requestedBy');
-      }
+      const mr = await ctx.materialRequest(obj.relatedId);
       if (mr) {
         obj.metadata.status = mr.status;
         if (!obj.metadata.projectName && mr.projectId?.name) {
@@ -87,10 +257,7 @@ async function enrichNotification(notif, userId) {
       obj.link = obj.metadata.projectId ? `/projects/${obj.metadata.projectId}` : '/projects';
     }
     try {
-      let mat = null;
-      if (obj.relatedId) {
-        mat = await ProjectMaterial.findById(obj.relatedId).populate('projectId addedBy');
-      }
+      const mat = await ctx.projectMaterial(obj.relatedId);
       if (mat) {
         if (!obj.metadata.projectName && mat.projectId?.name) {
           obj.metadata.projectName = mat.projectId.name;
@@ -135,17 +302,9 @@ async function enrichNotification(notif, userId) {
     // If rejection reason is missing or message is generic
     if (isRejectedMR && (!obj.metadata.reason || obj.message === 'Your material request was rejected.')) {
       try {
-        let mr = null;
-        if (obj.relatedId) {
-          mr = await MaterialRequest.findById(obj.relatedId).populate('projectId inventoryItemId reviewedBy');
-        }
+        let mr = await ctx.materialRequest(obj.relatedId);
         if (!mr) {
-          const userProj = await Project.findOne({ teamLeaderId: userId });
-          if (userProj) {
-            mr = await MaterialRequest.findOne({ projectId: userProj._id, status: 'rejected' })
-              .populate('projectId inventoryItemId reviewedBy')
-              .sort({ updatedAt: -1 });
-          }
+          mr = await ctx.latestMaterialRequest('rejected');
         }
         if (mr) {
           const pName = mr.projectId?.name || 'your project';
@@ -167,17 +326,9 @@ async function enrichNotification(notif, userId) {
       } catch {}
     } else if (isApprovedMR && (!obj.metadata.projectName || !obj.link)) {
       try {
-        let mr = null;
-        if (obj.relatedId) {
-          mr = await MaterialRequest.findById(obj.relatedId).populate('projectId inventoryItemId reviewedBy');
-        }
+        let mr = await ctx.materialRequest(obj.relatedId);
         if (!mr) {
-          const userProj = await Project.findOne({ teamLeaderId: userId });
-          if (userProj) {
-            mr = await MaterialRequest.findOne({ projectId: userProj._id, status: 'approved' })
-              .populate('projectId inventoryItemId reviewedBy')
-              .sort({ updatedAt: -1 });
-          }
+          mr = await ctx.latestMaterialRequest('approved');
         }
         if (mr) {
           const pName = mr.projectId?.name || 'your project';
@@ -214,34 +365,29 @@ async function enrichNotification(notif, userId) {
     if (!obj.link) {
       try {
         if (obj.relatedId) {
-          const upd = await ProjectUpdate.findById(obj.relatedId);
+          const upd = await ctx.update(obj.relatedId);
           if (upd?.projectId) {
-            obj.link = `/projects/${upd.projectId}#update-${upd._id}`;
+            obj.link = `/projects/${upd.projectId._id || upd.projectId}#update-${upd._id}`;
           } else {
-            const fb = await ProjectFeedback.findById(obj.relatedId);
+            const fb = await ctx.feedback(obj.relatedId);
             if (fb?.projectId) {
-              obj.link = `/projects/${fb.projectId}#update-${fb.updateId || ''}`;
+              const fbProjectId = fb.projectId._id || fb.projectId;
+              obj.link = `/projects/${fbProjectId}#update-${fb.updateId?._id || fb.updateId || ''}`;
             }
           }
         }
         if (!obj.link) {
-          const p = await Project.findOne({ teamLeaderId: userId });
-          if (p) obj.link = `/projects/${p._id}`;
+          const pId = await ctx.leaderProjectId();
+          if (pId) obj.link = `/projects/${pId}`;
         }
       } catch {}
     }
 
     if (isFeedback && (!obj.metadata.feedbackText || obj.message === 'You have new feedback from your mentor.')) {
       try {
-        let fb = null;
-        if (obj.relatedId) {
-          fb = await ProjectFeedback.findById(obj.relatedId).populate('mentorId projectId updateId');
-        }
+        let fb = await ctx.feedback(obj.relatedId);
         if (!fb) {
-          const userProj = await Project.findOne({ teamLeaderId: userId });
-          if (userProj) {
-            fb = await ProjectFeedback.findOne({ projectId: userProj._id }).populate('mentorId projectId updateId').sort({ createdAt: -1 });
-          }
+          fb = await ctx.latestFeedback();
         }
         if (fb) {
           const mName = fb.mentorId?.name || 'Faculty Mentor';
@@ -260,7 +406,7 @@ async function enrichNotification(notif, userId) {
       } catch {}
     } else if (!isFeedback && obj.relatedId) {
       try {
-        const upd = await ProjectUpdate.findById(obj.relatedId).populate('projectId studentId');
+        const upd = await ctx.update(obj.relatedId);
         if (upd) {
           if (!obj.metadata.projectName && upd.projectId?.name) {
             obj.metadata.projectName = upd.projectId.name;
@@ -309,10 +455,7 @@ async function enrichNotification(notif, userId) {
 
     if (obj.relatedId) {
       try {
-        const jr = await JoinRequest.findById(obj.relatedId)
-          .populate('studentId', 'name email department semester')
-          .populate('clubId', 'name')
-          .populate('projectId', 'name');
+        const jr = await ctx.joinRequest(obj.relatedId);
         if (jr && jr.studentId) {
           obj.metadata.actorName = obj.metadata.actorName || jr.studentId.name;
           obj.metadata.actorEmail = obj.metadata.actorEmail || jr.studentId.email;
@@ -389,23 +532,67 @@ async function enrichNotification(notif, userId) {
   return obj;
 }
 
-// ── GET /api/notifications?limit= ────────────────────────────────────────────
+// ── GET /api/notifications?limit=&cursor=&type=&status= ─────────────────────
 // Returns the authenticated user's notifications, newest first.
+//
+// Optional query parameters (backwards compatible):
+//   type=            exact notification type
+//   kind=club|project|event|request|system|inventory
+//   status=unread|read|all (default: all)
+//   limit=           default 50, max 100
+//   cursor=          opaque cursor returned as `nextCursor` by the previous page
+//   page=            offset paging alternative to cursor
+//
+// Ordering is stable (`createdAt` desc, `_id` desc) so a cursor never repeats or
+// skips a row created in the same millisecond.
 // SECURITY: userId comes from req.user.userId (JWT) — query param userId IGNORED.
 router.get('/', requireAuth, async (req, res) => {
   try {
     const userId = req.user.userId; // SECURITY: from JWT, never from query
-    const { limit } = req.query;
+    const { limit: pageLimit } = parsePagination(req.query, { defaultLimit: 50, maxLimit: 100 });
 
-    const pageLimit = Math.min(parseInt(limit) || 50, 100); // cap at 100
+    const filter = { userId };
 
-    // SECURITY: always filter by the JWT-derived userId
-    const rawNotifications = await Notification.find({ userId })
-      .sort({ createdAt: -1 })
-      .limit(pageLimit);
+    const type = firstString(req.query.type);
+    if (type) filter.type = type;
 
+    const kind = firstString(req.query.kind);
+    if (kind) {
+      if (!['club', 'project', 'event', 'request', 'system', 'inventory'].includes(kind)) {
+        return res.status(400).json({ success: false, message: 'Invalid kind filter' });
+      }
+      filter.kind = kind;
+    }
+
+    const status = firstString(req.query.status);
+    if (status && status !== 'all') {
+      if (status === 'unread') filter.isRead = false;
+      else if (status === 'read') filter.isRead = true;
+      else return res.status(400).json({ success: false, message: 'status must be unread, read or all' });
+    }
+
+    const cursor = decodeCursor(req.query.cursor);
+    if (cursor === undefined) {
+      return res.status(400).json({ success: false, message: 'Invalid cursor' });
+    }
+    if (cursor) {
+      filter.$and = [cursorFilter(cursor)];
+    }
+
+    let query = Notification.find(filter).sort({ createdAt: -1, _id: -1 });
+    if (!cursor) {
+      const page = parseInt(firstString(req.query.page), 10);
+      if (Number.isFinite(page) && page > 1) query = query.skip((page - 1) * pageLimit);
+    }
+
+    // Fetch one extra row so `hasMore`/`nextCursor` are exact.
+    const rawRows = await query.limit(pageLimit + 1);
+    const hasMore = rawRows.length > pageLimit;
+    const rawNotifications = hasMore ? rawRows.slice(0, pageLimit) : rawRows;
+
+    const ctx = await buildEnrichmentContext(rawNotifications, userId);
     const notifications = await Promise.all(
-      rawNotifications.map((n) => enrichNotification(n, userId))
+      rawNotifications.map((n) => enrichNotification(n, userId, ctx))
     );
 
     const unreadCount = await Notification.countDocuments({ userId, isRead: false });
@@ -414,13 +601,12 @@ router.get('/', requireAuth, async (req, res) => {
       success: true,
       unreadCount,
       count: notifications.length,
+      hasMore,
+      nextCursor: hasMore ? encodeCursor(rawNotifications[rawNotifications.length - 1]) : null,
       data: notifications,
     });
   } catch (error) {
-    if (error.name === 'CastError') {
-      return res.status(400).json({ success: false, message: 'Invalid ID format' });
-    }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -440,7 +626,7 @@ router.get('/unread-count', requireAuth, async (req, res) => {
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -466,7 +652,7 @@ router.patch('/read-all', requireAuth, async (req, res) => {
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -506,7 +692,38 @@ router.patch('/:notificationId/read', requireAuth, async (req, res) => {
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
+  }
+});
+
+// ── PATCH /api/notifications/:notificationId/unread ──────────────────────────
+// Mark a single notification as unread (the inbox row tool the redesign needs).
+// SECURITY: owner only, identity from JWT.
+router.patch('/:notificationId/unread', requireAuth, async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const userId = req.user.userId;
+
+    if (!isValidObjectId(notificationId)) {
+      return res.status(400).json({ success: false, message: 'Invalid notification ID format' });
+    }
+
+    const notification = await Notification.findOne({ _id: notificationId, userId });
+    if (!notification) {
+      // Do not distinguish "not found" from "not yours".
+      return res.status(404).json({ success: false, message: 'Notification not found' });
+    }
+
+    notification.isRead = false;
+    await notification.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Notification marked as unread',
+      data: notification,
+    });
+  } catch (error) {
+    return sendError(res, error);
   }
 });
 

@@ -8,7 +8,11 @@
     "dev": "node --watch server.js",
     "start": "node server.js",
     "test:cloudinary": "node test_cloudinary.mjs",
-    "seed": "node seed.mjs"
+    "seed": "node seed.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "backfill": "node scripts/backfill.mjs"
   },
   "keywords": [],
   "author": "",
@@ -25,6 +29,10 @@
     "node-cron": "^4.6.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "@vitest/coverage-v8": "^5.0.5",
+    "mongodb-memory-server": "^11.3.0",
+    "nodemon": "^3.1.14",
+    "supertest": "^7.3.1",
+    "vitest": "^5.0.5"
   }
 }

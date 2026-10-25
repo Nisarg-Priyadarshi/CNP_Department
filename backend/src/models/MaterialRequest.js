@@ -98,7 +98,7 @@ const materialRequestSchema = new mongoose.Schema(
 );
 
 materialRequestSchema.index({ projectId: 1, createdAt: -1 });
-materialRequestSchema.index({ status: 1 });
+materialRequestSchema.index({ status: 1, createdAt: -1 });
 
 const MaterialRequest = mongoose.model('MaterialRequest', materialRequestSchema);
 

@@ -28,6 +28,30 @@ const ALLOWED_ROLES = [
   'project_admin',
 ];
 
+/**
+ * Public self-registration roles.
+ *
+ * Self-registration creates students. Staff accounts are provisioned by the
+ * department, because a role is an authorisation claim, not a preference — with
+ * any broader default, anyone could register as an administrator.
+ *
+ * A deployment that genuinely needs open staff sign-up can widen this without a
+ * code change:
+ *
+ *   REGISTRATION_ROLES=student,faculty_coordinator,faculty_mentor
+ *
+ * Unknown values are ignored; an empty/absent variable means "student only".
+ */
+function registrationRoles() {
+  const configured = (process.env.REGISTRATION_ROLES || '')
+    .split(',')
+    .map((role) => role.trim())
+    .filter((role) => ALLOWED_ROLES.includes(role));
+  return configured.length ? configured : ['student'];
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 /** Build a JWT for the given user. */
 function signToken(user) {
   return jwt.sign(
@@ -42,6 +66,29 @@ function safeUser(user) {
   const obj = user.toObject ? user.toObject() : { ...user };
   delete obj.password;
   return obj;
+}
+
+/**
+ * Same predicate as requireAuth's `isProfileComplete`, exposed so the profile
+ * page can render the strength strip without re-deriving it from raw fields.
+ */
+function profileCompleteness(user) {
+  const isStudent = user.role === 'student';
+  const checks = [
+    { key: 'name', present: Boolean(user.name && user.name.trim()) },
+    { key: 'department', present: Boolean(user.department && user.department.trim()) },
+    { key: 'phone', present: Boolean(user.phone && user.phone.trim()) },
+  ];
+  if (isStudent) {
+    checks.push({ key: 'universityId', present: Boolean(user.universityId && user.universityId.trim()) });
+    checks.push({ key: 'semester', present: Boolean(user.semester) });
+  }
+  const missing = checks.filter((check) => !check.present).map((check) => check.key);
+  return {
+    percent: Math.round(((checks.length - missing.length) / checks.length) * 100),
+    missing,
+    complete: missing.length === 0,
+  };
 }
 
 // ── POST /api/auth/register ───────────────────────────────────────────────────
@@ -65,13 +112,27 @@ router.post('/register', async (req, res) => {
     }
 
     // ── Validate role ─────────────────────────────────────────────────────────
-    if (!ALLOWED_ROLES.includes(role)) {
+    const allowedRegistrationRoles = registrationRoles();
+    if (!allowedRegistrationRoles.includes(role)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid role. Allowed roles: ${ALLOWED_ROLES.join(', ')}`,
+        message: `Invalid role. Allowed roles: ${allowedRegistrationRoles.join(', ')}`,
       });
     }
 
+    const cleanName = typeof name === 'string' ? name.trim() : '';
+    if (!cleanName || cleanName.length > 120) {
+      return res.status(400).json({ success: false, message: 'Name is required (max 120 characters)' });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    if (!EMAIL_RE.test(normalizedEmail)) {
+      return res.status(400).json({ success: false, message: 'A valid email address is required' });
+    }
+
+    if (typeof password !== 'string' || password.length > 200) {
+      return res.status(400).json({ success: false, message: 'Password must be at most 200 characters' });
+    }
     // ── Password strength (minimum 8 characters) ──────────────────────────────
     if (password.length < 8) {
       return res.status(400).json({
@@ -80,8 +141,27 @@ router.post('/register', async (req, res) => {
       });
     }
 
+    if (department !== undefined && String(department).trim().length > 120) {
+      return res.status(400).json({ success: false, message: 'Department must be 120 characters or fewer' });
+    }
+    if (universityId !== undefined && String(universityId).trim().length > 50) {
+      return res.status(400).json({ success: false, message: 'University ID must be 50 characters or fewer' });
+    }
+    if (phone !== undefined && String(phone).trim().length > 30) {
+      return res.status(400).json({ success: false, message: 'Phone must be 30 characters or fewer' });
+    }
+    if (bio !== undefined && String(bio).trim().length > 1000) {
+      return res.status(400).json({ success: false, message: 'Bio must be 1000 characters or fewer' });
+    }
+    if (semester !== undefined && semester !== null && semester !== '') {
+      const parsedSemester = Number(semester);
+      if (!Number.isInteger(parsedSemester) || parsedSemester < 1 || parsedSemester > 12) {
+        return res.status(400).json({ success: false, message: 'Semester must be a whole number between 1 and 12' });
+      }
+    }
+
     // ── Duplicate email check ─────────────────────────────────────────────────
-    const existing = await User.findOne({ email: email.trim().toLowerCase() });
+    const existing = await User.findOne({ email: normalizedEmail });
     if (existing) {
       return res.status(409).json({
         success: false,
@@ -91,16 +171,18 @@ router.post('/register', async (req, res) => {
 
     // ── Create user (password is hashed by the pre-save hook in User model) ───
     const user = await User.create({
-      name:         name.trim(),
-      email:        email.trim().toLowerCase(),
+      name:         cleanName,
+      email:        normalizedEmail,
       password,             // raw — the model's pre-save hook will hash it
       role,
-      department:   department   || undefined,
-      universityId: universityId || undefined,
-      enrollmentNumber: (role === 'student' && enrollmentNumber && enrollmentNumber.trim()) ? enrollmentNumber.trim() : undefined,
+      department:   department   ? String(department).trim() : undefined,
+      universityId: universityId ? String(universityId).trim() : undefined,
+      enrollmentNumber: (role === 'student' && enrollmentNumber && String(enrollmentNumber).trim())
+        ? String(enrollmentNumber).trim().slice(0, 50)
+        : undefined,
       semester:     semester     || undefined,
-      phone:        phone        || undefined,
-      bio:          bio          || undefined,
+      phone:        phone ? String(phone).trim() : undefined,
+      bio:          bio ? String(bio).trim() : undefined,
     });
 
     const token = signToken(user);
@@ -184,7 +266,11 @@ router.get('/me', requireAuth, async (req, res) => {
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-    res.status(200).json({ success: true, data: user });
+    const safe = safeUser(user);
+    res.status(200).json({
+      success: true,
+      data: { ...safe, completeness: profileCompleteness(safe) },
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to fetch user profile' });
   }

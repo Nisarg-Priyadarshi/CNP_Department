@@ -21,7 +21,7 @@
  *   (Only a clear DB validation error is re-thrown to surface bugs early in dev.)
  */
 
-import Notification from '../models/Notification.js';
+import Notification, { kindForNotificationType } from '../models/Notification.js';
 import User from '../models/User.js';
 
 /**
@@ -87,6 +87,7 @@ export async function createNotification({
   const notification = await Notification.create({
     userId,
     type,
+    kind: kindForNotificationType(type),
     title,
     message,
     relatedId: relatedId || null,
@@ -172,6 +173,7 @@ export async function notifyAllUsersOfEvent({
   const docs = newRecipients.map((u) => ({
     userId: u._id,
     type,
+    kind: kindForNotificationType(type),
     title,
     message,
     relatedId: event._id,

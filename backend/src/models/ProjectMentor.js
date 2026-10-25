@@ -34,6 +34,9 @@ const projectMentorSchema = new mongoose.Schema(
 
 // ── Unique compound index: a mentor can only be assigned to a project ONCE ───
 projectMentorSchema.index({ projectId: 1, mentorId: 1 }, { unique: true });
+// "Projects for this mentor" and primary-mentor resolution.
+projectMentorSchema.index({ mentorId: 1 });
+projectMentorSchema.index({ projectId: 1, isPrimary: 1 });
 
 const ProjectMentor = mongoose.model('ProjectMentor', projectMentorSchema);
 

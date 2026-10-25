@@ -35,7 +35,7 @@ import ProjectFeedback from '../models/ProjectFeedback.js';
 import { createNotification, createNotifications } from '../services/notificationService.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { uploadMixed, getBase64DataURI, handleUploadError } from '../middleware/upload.js';
-import { uploadImage, uploadRaw } from '../services/cloudinaryService.js';
+import { uploadImage, uploadRaw, deleteAsset } from '../services/cloudinaryService.js';
 
 const router = express.Router();
 
@@ -96,6 +96,7 @@ async function resolveProjectAccess(user, projectId) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 import { requireRole } from '../middleware/requireRole.js';
+import { sendError } from '../lib/http.js';
 
 // ── GET /api/projects/updates/all ────────────────────────────────────────────
 // Fetch project updates globally. Only for project_admin.
@@ -108,7 +109,9 @@ router.get(
       const updates = await ProjectUpdate.find()
         .populate('studentId', 'name email role profileImage department semester')
         .populate('projectId', 'name status')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 })
+        .limit(500)
+        .lean();
 
       res.status(200).json({
         success: true,
@@ -116,7 +119,7 @@ router.get(
         data: updates,
       });
     } catch (error) {
-      res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );
@@ -301,7 +304,7 @@ router.post(
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -330,7 +333,9 @@ router.get('/:projectId/updates', requireAuth, async (req, res) => {
 
     const updates = await ProjectUpdate.find({ projectId })
       .populate('studentId', 'name email role profileImage department semester')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .limit(500)
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -342,7 +347,7 @@ router.get('/:projectId/updates', requireAuth, async (req, res) => {
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -379,7 +384,8 @@ router.get('/:projectId/updates/:updateId', requireAuth, async (req, res) => {
     }
 
     // Confirm the update belongs to this project
-    if (update.projectId._id.toString() !== projectId) {
+    const updateProjectId = update.projectId?._id?.toString?.() || update.projectId?.toString?.();
+    if (updateProjectId !== projectId) {
       return res.status(400).json({
         success: false,
         message: 'This update does not belong to the specified project',
@@ -391,7 +397,7 @@ router.get('/:projectId/updates/:updateId', requireAuth, async (req, res) => {
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -462,7 +468,23 @@ router.patch('/:projectId/updates/:updateId', requireAuth, async (req, res) => {
       if (!Array.isArray(files)) {
         return res.status(400).json({ success: false, message: 'files must be an array' });
       }
-      update.files = files;
+      if (files.length > 10) {
+        return res.status(400).json({ success: false, message: 'An update can attach at most 10 files' });
+      }
+      // Only plain { name, url, publicId } metadata is accepted — never an
+      // arbitrary object graph (the field used to be an untyped Array).
+      update.files = files.map((file) => {
+        if (!file || typeof file !== 'object' || typeof file.url !== 'string') {
+          throw Object.assign(new Error('Each file must be an object with a url'), { status: 400 });
+        }
+        return {
+          name: typeof file.name === 'string' ? file.name.slice(0, 255) : undefined,
+          url: file.url.slice(0, 2048),
+          publicId: typeof file.publicId === 'string' ? file.publicId.slice(0, 255) : undefined,
+          type: typeof file.type === 'string' ? file.type.slice(0, 120) : undefined,
+          size: Number.isFinite(Number(file.size)) ? Number(file.size) : undefined,
+        };
+      });
     }
 
     await update.save();
@@ -478,7 +500,7 @@ router.patch('/:projectId/updates/:updateId', requireAuth, async (req, res) => {
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -564,7 +586,7 @@ router.delete('/:projectId/updates/:updateId', requireAuth, async (req, res) => 
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -584,6 +606,9 @@ router.post('/:projectId/feedback', requireAuth, async (req, res) => {
     // ── Required field validation ──────────────────────────────────────────
     if (!feedbackText || !feedbackText.trim()) {
       return res.status(400).json({ success: false, message: 'feedbackText is required' });
+    }
+    if (feedbackText.trim().length > 4000) {
+      return res.status(400).json({ success: false, message: 'feedbackText must be 4000 characters or fewer' });
     }
 
     // ── ID validation ──────────────────────────────────────────────────────
@@ -717,7 +742,7 @@ router.post('/:projectId/feedback', requireAuth, async (req, res) => {
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -745,7 +770,9 @@ router.get('/:projectId/feedback', requireAuth, async (req, res) => {
     const feedbackList = await ProjectFeedback.find({ projectId })
       .populate('mentorId', 'name email role profileImage department semester')
       .populate('updateId', 'title description createdAt')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .limit(500)
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -757,7 +784,7 @@ router.get('/:projectId/feedback', requireAuth, async (req, res) => {
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -800,7 +827,9 @@ router.get('/:projectId/updates/:updateId/feedback', requireAuth, async (req, re
     const feedbackList = await ProjectFeedback.find({ projectId, updateId })
       .populate('mentorId', 'name email role profileImage department semester')
       .populate('updateId', 'title description createdAt')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .limit(500)
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -812,7 +841,7 @@ router.get('/:projectId/updates/:updateId/feedback', requireAuth, async (req, re
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 

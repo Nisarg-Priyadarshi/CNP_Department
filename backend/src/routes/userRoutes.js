@@ -22,6 +22,7 @@ import ProjectMembership from '../models/ProjectMembership.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { uploadImages, getBase64DataURI, handleUploadError } from '../middleware/upload.js';
 import { uploadImage, deleteAsset } from '../services/cloudinaryService.js';
+import { isValidObjectId, sendError } from '../lib/http.js';
 
 const router = express.Router();
 
@@ -86,6 +87,7 @@ router.get('/', requireAuth, async (req, res) => {
     const users = await User.find(filter)
       .select('_id name email role department semester universityId enrollmentNumber profileImage phone')
       .sort({ name: 1 })
+      .limit(500)
       .lean();
 
     res.status(200).json({
@@ -94,7 +96,7 @@ router.get('/', requireAuth, async (req, res) => {
       data: users,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -118,7 +120,19 @@ router.post('/test', async (req, res) => {
       });
     }
 
-    const existing = await User.findOne({ email });
+    if (!VALID_ROLES.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid role. Allowed roles: ${VALID_ROLES.join(', ')}`,
+      });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return res.status(400).json({ success: false, message: 'A valid email is required' });
+    }
+
+    const existing = await User.findOne({ email: normalizedEmail });
     if (existing) {
       return res.status(200).json({
         success: true,
@@ -127,7 +141,7 @@ router.post('/test', async (req, res) => {
       });
     }
 
-    const user = await User.create({ name, email, role });
+    const user = await User.create({ name: String(name).trim().slice(0, 120), email: normalizedEmail, role });
 
     res.status(201).json({
       success: true,
@@ -135,7 +149,7 @@ router.post('/test', async (req, res) => {
       data: user,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -189,7 +203,7 @@ router.post(
         },
       });
     } catch (error) {
-      res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );
@@ -206,25 +220,53 @@ router.patch('/profile', requireAuth, async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
+    const fail = (message) => res.status(400).json({ success: false, message });
+
     if (name !== undefined) {
-      if (!name.trim()) return res.status(400).json({ success: false, message: 'Name cannot be empty' });
-      user.name = name.trim();
+      const clean = typeof name === 'string' ? name.trim() : '';
+      if (!clean) return fail('Name cannot be empty');
+      if (clean.length > 120) return fail('Name must be 120 characters or fewer');
+      user.name = clean;
     }
-    if (department !== undefined) user.department = department.trim();
-    if (universityId !== undefined) user.universityId = universityId.trim();
+    if (department !== undefined) {
+      const clean = typeof department === 'string' ? department.trim() : '';
+      if (clean.length > 120) return fail('Department must be 120 characters or fewer');
+      user.department = clean;
+    }
+    if (universityId !== undefined) {
+      const clean = typeof universityId === 'string' ? universityId.trim() : '';
+      if (clean.length > 50) return fail('University ID must be 50 characters or fewer');
+      user.universityId = clean;
+    }
     if (semester !== undefined) {
       if (semester === '' || semester === null) {
         user.semester = null;
       } else {
-        user.semester = Number(semester);
+        const parsed = Number(semester);
+        if (!Number.isInteger(parsed) || parsed < 1 || parsed > 12) {
+          return fail('Semester must be a whole number between 1 and 12');
+        }
+        user.semester = parsed;
       }
     }
-    if (phone !== undefined) user.phone = phone.trim();
-    if (bio !== undefined) user.bio = bio.trim();
+    if (phone !== undefined) {
+      const clean = typeof phone === 'string' ? phone.trim() : '';
+      if (clean.length > 30) return fail('Phone must be 30 characters or fewer');
+      user.phone = clean;
+    }
+    if (bio !== undefined) {
+      const clean = typeof bio === 'string' ? bio.trim() : '';
+      if (clean.length > 1000) return fail('Bio must be 1000 characters or fewer');
+      user.bio = clean;
+    }
     if (enrollmentNumber !== undefined) {
       // Enrollment Number only applies to students
       if (user.role === 'student') {
-        user.enrollmentNumber = enrollmentNumber === '' || enrollmentNumber === null ? null : enrollmentNumber.trim();
+        const clean = enrollmentNumber === '' || enrollmentNumber === null
+          ? null
+          : (typeof enrollmentNumber === 'string' ? enrollmentNumber.trim() : '');
+        if (clean && clean.length > 50) return fail('Enrollment number must be 50 characters or fewer');
+        user.enrollmentNumber = clean || null;
       }
     }
 
@@ -239,7 +281,7 @@ router.patch('/profile', requireAuth, async (req, res) => {
     if (error.name === 'ValidationError') {
       return res.status(400).json({ success: false, message: error.message });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -252,8 +294,13 @@ router.patch('/profile', requireAuth, async (req, res) => {
 //   - Other roles (club_admin, faculty_coordinator) can only see their own.
 router.get('/:userId/projects', requireAuth, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const { userId: userIdParam } = req.params;
+    const userId = userIdParam === 'me' ? req.user.userId : userIdParam;
     const actingUser = req.user; // SECURITY: JWT-derived identity
+
+    if (!isValidObjectId(userId)) {
+      return res.status(400).json({ success: false, message: 'Invalid user ID format' });
+    }
 
     // Authorization: restrict access based on role
     if (
@@ -268,14 +315,16 @@ router.get('/:userId/projects', requireAuth, async (req, res) => {
     }
 
     // Verify user exists
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).select('name email role').lean();
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
     const memberships = await ProjectMembership.find({ studentId: userId })
       .populate('projectId', 'name description image status teamLeaderId createdAt updatedAt')
-      .sort({ joinedAt: 1 });
+      .sort({ joinedAt: 1 })
+      .limit(200)
+      .lean();
 
     // Return the project documents directly (not the membership wrappers)
     const projects = memberships.map((m) => ({
@@ -294,7 +343,7 @@ router.get('/:userId/projects', requireAuth, async (req, res) => {
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid user ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 

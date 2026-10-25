@@ -40,6 +40,9 @@ const getAssetPath = (type, filename) => {
 };
 
 async function uploadAssetIfPresent(type, filename, folder, isRaw = false) {
+  if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+    return null;
+  }
   const p = getAssetPath(type, filename);
   if (!p) return null;
   if (isRaw) {
@@ -130,9 +133,27 @@ async function runSeed() {
   
   // CLUBS
   const clubsData = [
-    { name: 'Robotics Club', description: 'Build robots.', coordinator: 'Dr. Neha Verma', logoFile: 'robotics-club.jpg' },
-    { name: 'Coding Club', description: 'Write code.', coordinator: 'Dr. Rahul Desai', logoFile: 'coding-club.jpg' },
-    { name: 'Photography Club', description: 'Take photos.', coordinator: 'Dr. Neha Verma', logoFile: 'photography-club.jpg' }
+    {
+      name: 'Robotics Club',
+      description: 'Designs, builds and competes with autonomous machines. Weekly build nights in the Innovation Lab, with a team entered in the national robotics circuit.',
+      coordinator: 'Dr. Neha Verma',
+      logoFile: 'robotics-club.jpg',
+      foundedAt: '2019-08-01'
+    },
+    {
+      name: 'Coding Club',
+      description: 'Competitive programming, open-source sprints and the campus hackathon. Members run weekly problem clinics and mentor first-year teams.',
+      coordinator: 'Dr. Rahul Desai',
+      logoFile: 'coding-club.jpg',
+      foundedAt: '2018-01-15'
+    },
+    {
+      name: 'Photography Club',
+      description: 'Documentary, portrait and campus life. Monthly photo walks, a darkroom hour, and the archive that supplies the department with its imagery.',
+      coordinator: 'Dr. Neha Verma',
+      logoFile: 'photography-club.jpg',
+      foundedAt: '2021-09-10'
+    }
   ];
 
   const clubDocs = {};
@@ -145,6 +166,7 @@ async function runSeed() {
       description: c.description,
       facultyCoordinatorId: userDocs[c.coordinator]._id,
       createdBy: userDocs['Karan Shah']._id,
+      foundedAt: c.foundedAt ? new Date(c.foundedAt) : null,
       logo: asset ? asset.secure_url : null,
       logoPublicId: asset ? asset.public_id : null
     });
@@ -178,9 +200,27 @@ async function runSeed() {
 
   // PROJECTS
   const projectsData = [
-    { name: 'Smart Irrigation System', status: 'active', leader: 'Arjun Mehta', imageFile: 'smart-irrigation.jpg' },
-    { name: 'Autonomous Rover', status: 'active', leader: 'Kabir Patel', imageFile: 'autonomous-rover.jpg' },
-    { name: 'Campus Energy Monitor', status: 'active', leader: 'Riya Sharma', imageFile: 'campus-energy.jpg' }
+    {
+      name: 'Smart Irrigation System',
+      status: 'active',
+      leader: 'Arjun Mehta',
+      imageFile: 'smart-irrigation.jpg',
+      description: 'Soil-moisture sensing and a scheduled pump controller for the campus kitchen garden. Field-tested against the manual watering roster.'
+    },
+    {
+      name: 'Autonomous Rover',
+      status: 'active',
+      leader: 'Kabir Patel',
+      imageFile: 'autonomous-rover.jpg',
+      description: 'A four-wheel rover with obstacle avoidance and a telemetry link, built as a platform for the robotics club competition entry.'
+    },
+    {
+      name: 'Campus Energy Monitor',
+      status: 'active',
+      leader: 'Riya Sharma',
+      imageFile: 'campus-energy.jpg',
+      description: 'Clamp meters on the department distribution board, feeding a live dashboard of per-lab consumption for the sustainability report.'
+    }
   ];
 
   const projectDocs = {};
@@ -190,7 +230,7 @@ async function runSeed() {
 
     const proj = await Project.create({
       name: p.name,
-      description: `Description for ${p.name}`,
+      description: p.description,
       status: p.status,
       createdBy: userDocs['Vivek Malhotra']._id,
       teamLeaderId: userDocs[p.leader]._id,
@@ -262,21 +302,71 @@ async function runSeed() {
 
   // EVENTS
   const now = new Date();
-  const future = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const past = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  // Varied days and times: a calendar where every event sits on the same minute
+  // reads as generated data and hides how the month view actually behaves.
+  const at = (dayOffset, hour, minute = 0) => {
+    const date = new Date(now);
+    date.setDate(date.getDate() + dayOffset);
+    date.setHours(hour, minute, 0, 0);
+    return date;
+  };
 
   const eventsData = [
-    { title: 'Robotics Workshop', club: 'Robotics Club', date: future, location: 'Innovation Lab' },
-    { title: 'Competitive Programming Contest', club: 'Coding Club', date: future, location: 'Computer Lab' },
-    { title: 'Photography Walk', club: 'Photography Club', date: future, location: 'University Campus' },
-    { title: 'Introduction to Robotics', club: 'Robotics Club', date: past, location: 'Seminar Hall' },
-    { title: 'Web Development Bootcamp', club: 'Coding Club', date: past, location: 'Computer Lab' }
+    {
+      title: 'Robotics Workshop',
+      club: 'Robotics Club',
+      date: at(5, 10, 0),
+      location: 'Innovation Lab',
+      description: 'Motor drivers, encoders and a working differential drive. Bring a laptop; kits are provided.'
+    },
+    {
+      title: 'Hack Night',
+      club: 'Coding Club',
+      date: at(2, 18, 30),
+      location: 'Computer Lab 2',
+      description: 'One evening, one problem, teams of three. Open to every semester.'
+    },
+    {
+      title: 'Competitive Programming Contest',
+      club: 'Coding Club',
+      date: at(9, 14, 0),
+      location: 'Computer Lab',
+      description: 'Three hours, six problems, individual entry. Ranked on the club leaderboard.'
+    },
+    {
+      title: 'Photography Walk',
+      club: 'Photography Club',
+      date: at(12, 8, 0),
+      location: 'University Campus',
+      description: 'Golden-hour walk across the old campus. Any camera, including a phone.'
+    },
+    {
+      title: 'Design Critique',
+      club: 'Photography Club',
+      date: at(19, 16, 0),
+      location: 'Seminar Hall',
+      description: 'Members submit three frames; the group reads them together.'
+    },
+    {
+      title: 'Introduction to Robotics',
+      club: 'Robotics Club',
+      date: at(-6, 15, 0),
+      location: 'Seminar Hall',
+      description: 'The opening session of the semester: what the club builds and how to join a team.'
+    },
+    {
+      title: 'Web Development Bootcamp',
+      club: 'Coding Club',
+      date: at(-11, 11, 0),
+      location: 'Computer Lab',
+      description: 'Two days of HTML, CSS and the browser. The starting point for the club web team.'
+    }
   ];
 
   for (const e of eventsData) {
     await Event.create({
       title: e.title,
-      description: e.title + ' description',
+      description: e.description,
       clubId: clubDocs[e.club]._id,
       eventDate: e.date,
       location: e.location,
@@ -333,11 +423,11 @@ async function runSeed() {
 
   // GUITAR INVENTORY
   const inventoryData = [
-    { name: 'Jumper Wires', totalQuantity: 100, availableQuantity: 70 },
-    { name: 'Arduino Uno', totalQuantity: 20, availableQuantity: 14 },
-    { name: 'Ultrasonic Sensor', totalQuantity: 30, availableQuantity: 24 },
-    { name: 'Soil Moisture Sensor', totalQuantity: 25, availableQuantity: 18 },
-    { name: 'DC Motor', totalQuantity: 40, availableQuantity: 32 }
+    { name: 'Jumper Wires', totalQuantity: 100, availableQuantity: 70, minimumStock: 25 },
+    { name: 'Arduino Uno', totalQuantity: 20, availableQuantity: 14, minimumStock: 5 },
+    { name: 'Ultrasonic Sensor', totalQuantity: 30, availableQuantity: 24, minimumStock: 8 },
+    { name: 'Soil Moisture Sensor', totalQuantity: 25, availableQuantity: 18, minimumStock: 6 },
+    { name: 'DC Motor', totalQuantity: 40, availableQuantity: 32, minimumStock: 10 }
   ];
 
   const inventoryDocs = {};
@@ -346,6 +436,7 @@ async function runSeed() {
       name: inv.name,
       totalQuantity: inv.totalQuantity,
       availableQuantity: inv.availableQuantity,
+      minimumStock: inv.minimumStock ?? 0,
       createdBy: userDocs['Vivek Malhotra']._id
     });
     inventoryDocs[inv.name] = item;

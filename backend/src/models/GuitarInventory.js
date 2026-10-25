@@ -37,6 +37,14 @@ const guitarInventorySchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    // Real low-stock threshold used by GET /inventory/summary and the "Running low"
+    // tag. 0 means "no threshold configured" (never low). Replaces the frontend's
+    // former 25%-of-totalQuantity presentation heuristic.
+    minimumStock: {
+      type: Number,
+      default: 0,
+      min: [0, 'minimumStock cannot be negative'],
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -45,6 +53,9 @@ const guitarInventorySchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+guitarInventorySchema.index({ category: 1 });
+guitarInventorySchema.index({ createdAt: -1 });
 
 const GuitarInventory = mongoose.model('GuitarInventory', guitarInventorySchema);
 

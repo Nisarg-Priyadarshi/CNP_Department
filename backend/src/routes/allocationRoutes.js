@@ -19,6 +19,7 @@ import GuitarInventory from '../models/GuitarInventory.js';
 import InventoryAllocation from '../models/InventoryAllocation.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { requireRole } from '../middleware/requireRole.js';
+import { sendError } from '../lib/http.js';
 
 const router = express.Router();
 
@@ -32,11 +33,13 @@ router.get('/', requireAuth, requireRole('project_admin'), async (_req, res) => 
       .populate('projectId', 'name status')
       .populate('allocatedBy', 'name email role department semester')
       .populate('materialRequestId', 'quantity reason createdAt')
-      .sort({ allocatedAt: -1 });
+      .sort({ allocatedAt: -1 })
+      .limit(500)
+      .lean();
 
     res.status(200).json({ success: true, count: allocations.length, data: allocations });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -53,7 +56,9 @@ router.get('/project/:projectId', requireAuth, requireRole('project_admin'), asy
     const allocations = await InventoryAllocation.find({ projectId })
       .populate('inventoryItemId', 'name category')
       .populate('allocatedBy', 'name email role department semester')
-      .sort({ allocatedAt: -1 });
+      .sort({ allocatedAt: -1 })
+      .limit(500)
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -65,7 +70,7 @@ router.get('/project/:projectId', requireAuth, requireRole('project_admin'), asy
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -82,7 +87,9 @@ router.get('/inventory/:itemId', requireAuth, requireRole('project_admin'), asyn
     const allocations = await InventoryAllocation.find({ inventoryItemId: itemId })
       .populate('projectId', 'name status')
       .populate('allocatedBy', 'name email role department semester')
-      .sort({ allocatedAt: -1 });
+      .sort({ allocatedAt: -1 })
+      .limit(500)
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -94,7 +101,7 @@ router.get('/inventory/:itemId', requireAuth, requireRole('project_admin'), asyn
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 

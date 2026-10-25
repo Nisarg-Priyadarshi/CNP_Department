@@ -9,6 +9,7 @@ import { requireAuth } from '../middleware/requireAuth.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { uploadMixed, getBase64DataURI, handleUploadError } from '../middleware/upload.js';
 import { uploadImage, uploadRaw } from '../services/cloudinaryService.js';
+import { isWholeNumber, isValidObjectId, sendError } from '../lib/http.js';
 
 const router = express.Router();
 
@@ -45,7 +46,9 @@ router.get('/:projectId/materials', requireAuth, async (req, res) => {
       .populate('addedBy', 'name email role department semester')
       .populate('inventoryItemId', 'name category')
       .populate('materialRequestId', 'specifications reason documentUrl documentOriginalName imageUrl')
-      .sort({ createdAt: 1 });
+      .sort({ createdAt: 1 })
+      .limit(500)
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -57,7 +60,7 @@ router.get('/:projectId/materials', requireAuth, async (req, res) => {
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid project ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -73,7 +76,9 @@ router.get('/:projectId/team', requireAuth, async (req, res) => {
 
     const members = await ProjectMembership.find({ projectId })
       .populate('studentId', 'name email role department semester')
-      .sort({ joinedAt: 1 });
+      .sort({ joinedAt: 1 })
+      .limit(500)
+      .lean();
 
     const teamLeaderId = project.teamLeaderId ? project.teamLeaderId._id.toString() : null;
 
@@ -108,7 +113,7 @@ router.get('/:projectId/team', requireAuth, async (req, res) => {
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid project ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -124,6 +129,9 @@ router.patch(
 
       if (!studentId) {
         return res.status(400).json({ success: false, message: 'studentId is required' });
+      }
+      if (!isValidObjectId(projectId) || !isValidObjectId(studentId)) {
+        return res.status(400).json({ success: false, message: 'Invalid ID format' });
       }
 
       const project = await Project.findById(projectId);
@@ -150,7 +158,7 @@ router.patch(
         data: { projectId: project._id, teamLeaderId: project.teamLeaderId },
       });
     } catch (error) {
-      res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );
@@ -180,8 +188,14 @@ router.post(
       }
 
       const qty = Number(quantity);
-      if (isNaN(qty) || qty < 1) {
-        return res.status(400).json({ success: false, message: 'quantity must be a positive integer' });
+      if (!isWholeNumber(qty, { min: 1 })) {
+        return res.status(400).json({ success: false, message: 'quantity must be a positive whole number' });
+      }
+      if (name.trim().length > 120) {
+        return res.status(400).json({ success: false, message: 'name must be 120 characters or fewer' });
+      }
+      if (specifications !== undefined && String(specifications).trim().length > 2000) {
+        return res.status(400).json({ success: false, message: 'specifications must be 2000 characters or fewer' });
       }
 
       if (!['self_purchased', 'owned'].includes(source)) {
@@ -342,7 +356,7 @@ router.post(
       if (error.name === 'CastError') {
         return res.status(400).json({ success: false, message: 'Invalid ID format' });
       }
-      res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );

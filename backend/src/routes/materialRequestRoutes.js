@@ -32,8 +32,24 @@ import { requireAuth } from '../middleware/requireAuth.js';
 import { requireRole, requireAnyRole } from '../middleware/requireRole.js';
 import { uploadMixed, getBase64DataURI, handleUploadError } from '../middleware/upload.js';
 import { uploadImage, uploadRaw } from '../services/cloudinaryService.js';
+import {
+  escapeRegex,
+  isWholeNumber,
+  isValidObjectId,
+  parsePagination,
+  queryText,
+  sendError,
+} from '../lib/http.js';
 
 const router = express.Router();
+
+const STATUSES = ['pending', 'approved', 'rejected'];
+const REQUEST_POPULATE = [
+  { path: 'requestedBy', select: 'name email role department semester' },
+  { path: 'projectId', select: 'name status' },
+  { path: 'inventoryItemId', select: 'name category availableQuantity totalQuantity location' },
+  { path: 'reviewedBy', select: 'name email role department semester' },
+];
 
 // ── POST /api/material-requests ───────────────────────────────────────────────
 // Team Leader creates a material request from Guitar inventory.
@@ -62,8 +78,8 @@ router.post(
       }
 
       const qty = Number(quantity);
-      if (isNaN(qty) || qty < 1) {
-        return res.status(400).json({ success: false, message: 'quantity must be a positive integer' });
+      if (!isWholeNumber(qty, { min: 1 })) {
+        return res.status(400).json({ success: false, message: 'quantity must be a positive whole number' });
       }
 
       if (!reason || !reason.trim()) {
@@ -71,6 +87,12 @@ router.post(
           success: false,
           message: 'Reason or explanation of the requirement is required',
         });
+      }
+      if (reason.trim().length > 2000) {
+        return res.status(400).json({ success: false, message: 'reason must be 2000 characters or fewer' });
+      }
+      if (specifications !== undefined && String(specifications).trim().length > 2000) {
+        return res.status(400).json({ success: false, message: 'specifications must be 2000 characters or fewer' });
       }
 
       // 1. Verify project exists
@@ -199,26 +221,108 @@ router.post(
       if (error.name === 'CastError') {
         return res.status(400).json({ success: false, message: 'Invalid ID format' });
       }
-      res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );
 
 // ── GET /api/material-requests ────────────────────────────────────────────────
 // project_admin sees ALL requests.
+// Optional filters (backwards compatible):
+//   status=pending|approved|rejected
+//   projectId=<id>
+//   q=<item name | project name | requester name | reason>
+//   page=, limit=
 // SECURITY: No adminId query param needed — role from JWT.
-router.get('/', requireAuth, requireRole('project_admin'), async (_req, res) => {
+router.get('/', requireAuth, requireRole('project_admin'), async (req, res) => {
   try {
-    const requests = await MaterialRequest.find()
-      .populate('requestedBy', 'name email role department semester')
-      .populate('projectId', 'name status')
-      .populate('inventoryItemId', 'name category availableQuantity totalQuantity location')
-      .populate('reviewedBy', 'name email role department semester')
-      .sort({ createdAt: -1 });
+    const { limit, skip } = parsePagination(req.query, { defaultLimit: 200, maxLimit: 500 });
+    const filter = {};
+
+    const status = req.query.status;
+    if (status !== undefined && status !== '') {
+      if (!STATUSES.includes(String(status))) {
+        return res.status(400).json({ success: false, message: `status must be one of: ${STATUSES.join(', ')}` });
+      }
+      filter.status = String(status);
+    }
+
+    const projectId = req.query.projectId;
+    if (projectId !== undefined && projectId !== '') {
+      if (!isValidObjectId(projectId)) {
+        return res.status(400).json({ success: false, message: 'Invalid projectId format' });
+      }
+      filter.projectId = projectId;
+    }
+
+    const q = queryText(req.query.q);
+    if (q) {
+      const regex = new RegExp(escapeRegex(q), 'i');
+      // Reason/material name are local fields; project/requester names need ids.
+      // Resolve the matching ids in one query each, then OR them in.
+      const [projects, users] = await Promise.all([
+        Project.find({ name: regex }).select('_id').limit(200).lean(),
+        User.find({ name: regex }).select('_id').limit(200).lean(),
+      ]);
+      filter.$or = [
+        { materialName: regex },
+        { reason: regex },
+        { specifications: regex },
+        { projectId: { $in: projects.map((p) => p._id) } },
+        { requestedBy: { $in: users.map((u) => u._id) } },
+      ];
+    }
+
+    const requests = await MaterialRequest.find(filter)
+      .populate(REQUEST_POPULATE)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
 
     res.status(200).json({ success: true, count: requests.length, data: requests });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
+  }
+});
+
+// ── GET /api/material-requests/summary ────────────────────────────────────────
+// Real aggregates for the ops pipeline: counts per status, units waiting and the
+// age anchor of the oldest pending request. Registered before /project/:projectId.
+router.get('/summary', requireAuth, requireRole('project_admin'), async (_req, res) => {
+  try {
+    const [statusRows, pendingAgg] = await Promise.all([
+      MaterialRequest.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
+      MaterialRequest.aggregate([
+        { $match: { status: 'pending' } },
+        {
+          $group: {
+            _id: null,
+            unitsPending: { $sum: '$quantity' },
+            oldestPendingAt: { $min: '$createdAt' },
+          },
+        },
+      ]),
+    ]);
+
+    const counts = { pending: 0, approved: 0, rejected: 0 };
+    for (const row of statusRows) {
+      if (row?._id) counts[row._id] = row.count;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        pending: counts.pending,
+        approved: counts.approved,
+        rejected: counts.rejected,
+        unitsPending: pendingAgg[0]?.unitsPending || 0,
+        oldestPendingAt: pendingAgg[0]?.oldestPendingAt || null,
+        resolved: counts.approved + counts.rejected,
+      },
+    });
+  } catch (error) {
+    return sendError(res, error);
   }
 });
 
@@ -263,18 +367,378 @@ router.get('/project/:projectId', requireAuth, async (req, res) => {
     }
 
     const requests = await MaterialRequest.find({ projectId })
-      .populate('requestedBy', 'name email role department semester')
-      .populate('projectId', 'name status')
-      .populate('inventoryItemId', 'name category availableQuantity totalQuantity location')
-      .populate('reviewedBy', 'name email role department semester')
-      .sort({ createdAt: -1 });
+      .populate(REQUEST_POPULATE)
+      .sort({ createdAt: -1 })
+      .limit(500)
+      .lean();
 
     res.status(200).json({ success: true, count: requests.length, data: requests });
   } catch (error) {
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BULK APPROVE / REJECT
+// All-or-nothing: a batch is validated as a whole (including stock for every
+// item across the batch) before anything is written. If any request cannot be
+// approved, nothing changes and the response lists every reason.
+// ══════════════════════════════════════════════════════════════════════════════
+
+const MAX_BATCH = 100;
+
+/** Normalise + validate the requestIds body field. */
+function normalizeBatchIds(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { error: 'requestIds must be a non-empty array' };
+  }
+  if (raw.length > MAX_BATCH) {
+    return { error: `A batch may contain at most ${MAX_BATCH} requests` };
+  }
+  const ids = [...new Set(raw.map((value) => String(value)))];
+  const problems = [];
+  const valid = [];
+  for (const id of ids) {
+    if (!isValidObjectId(id)) problems.push({ requestId: id, reason: 'Invalid request id' });
+    else valid.push(id);
+  }
+  return { ids: valid, problems };
+}
+
+/** Load the batch and report requests that are missing or no longer pending. */
+async function loadPendingBatch(ids) {
+  const docs = await MaterialRequest.find({ _id: { $in: ids } });
+  const byId = new Map(docs.map((doc) => [doc._id.toString(), doc]));
+  const problems = [];
+  const requests = [];
+  for (const id of ids) {
+    const doc = byId.get(id);
+    if (!doc) problems.push({ requestId: id, reason: 'Request not found' });
+    else if (doc.status !== 'pending') {
+      problems.push({ requestId: id, reason: `Request is already ${doc.status}` });
+    } else requests.push(doc);
+  }
+  return { requests, problems };
+}
+
+/** Validate projects, team leaders and stock for a whole approve batch. */
+async function validateApprovalBatch(requests) {
+  const problems = [];
+
+  const projectIds = [...new Set(requests.map((r) => String(r.projectId)))];
+  const itemIds = [...new Set(requests.map((r) => String(r.inventoryItemId)))];
+
+  const [projects, items] = await Promise.all([
+    Project.find({ _id: { $in: projectIds } }).select('name teamLeaderId').lean(),
+    GuitarInventory.find({ _id: { $in: itemIds } }).select('name availableQuantity totalQuantity').lean(),
+  ]);
+  const projectMap = new Map(projects.map((p) => [p._id.toString(), p]));
+  const itemMap = new Map(items.map((i) => [i._id.toString(), i]));
+
+  const requestedByItem = new Map();
+
+  for (const request of requests) {
+    const requestId = request._id.toString();
+    const project = projectMap.get(String(request.projectId));
+
+    if (!project) {
+      problems.push({ requestId, reason: 'Associated project no longer exists' });
+      continue;
+    }
+    if (!project.teamLeaderId || project.teamLeaderId.toString() !== request.requestedBy.toString()) {
+      problems.push({ requestId, reason: 'The requester is no longer the Team Leader of this project' });
+    }
+    if (!isWholeNumber(request.quantity, { min: 1 })) {
+      problems.push({ requestId, reason: 'Request quantity is invalid' });
+      continue;
+    }
+
+    const itemId = String(request.inventoryItemId);
+    const item = itemMap.get(itemId);
+    if (!item) {
+      problems.push({ requestId, reason: 'Inventory item no longer exists' });
+      continue;
+    }
+    requestedByItem.set(itemId, (requestedByItem.get(itemId) || 0) + request.quantity);
+  }
+
+  // Stock is checked against the sum of the whole batch, not row by row.
+  for (const [itemId, needed] of requestedByItem) {
+    const item = itemMap.get(itemId);
+    if (!item || needed > item.availableQuantity) {
+      for (const request of requests) {
+        if (String(request.inventoryItemId) !== itemId) continue;
+        problems.push({
+          requestId: request._id.toString(),
+          reason: `Insufficient stock for "${item?.name || 'item'}": batch requests ${needed}, available ${item?.availableQuantity ?? 0}`,
+        });
+      }
+    }
+  }
+
+  return { problems, projects: projectMap, items: itemMap, requestedByItem };
+}
+
+// ── POST /api/material-requests/bulk-approve ──────────────────────────────────
+router.post('/bulk-approve', requireAuth, requireRole('project_admin'), async (req, res) => {
+  try {
+    const adminId = req.user.userId;
+    const normalized = normalizeBatchIds(req.body?.requestIds);
+    if (normalized.error) {
+      return res.status(400).json({ success: false, message: normalized.error });
+    }
+    let problems = normalized.problems || [];
+
+    const { requests, problems: pendingProblems } = await loadPendingBatch(normalized.ids);
+    problems = problems.concat(pendingProblems);
+
+    if (problems.length === 0) {
+      const validation = await validateApprovalBatch(requests);
+      problems = validation.problems;
+      if (problems.length === 0) {
+        return await executeBulkApproval(res, req, requests, validation, adminId);
+      }
+    }
+
+    return res.status(422).json({
+      success: false,
+      message: 'Batch not approved — no changes were made',
+      details: problems,
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+/** Execute an already-validated approve batch with rollback on any failure. */
+async function executeBulkApproval(res, req, requests, validation, adminId) {
+  const ids = requests.map((r) => r._id);
+  const reviewedAt = new Date();
+
+  // 1. Claim every request atomically.
+  const claim = await MaterialRequest.updateMany(
+    { _id: { $in: ids }, status: 'pending' },
+    { $set: { status: 'approved', reviewedBy: adminId, reviewedAt } }
+  );
+
+  const rollbackStatuses = async () => {
+    await MaterialRequest.updateMany(
+      { _id: { $in: ids }, status: 'approved', reviewedBy: adminId, reviewedAt },
+      { $set: { status: 'pending', reviewedBy: null, reviewedAt: null } }
+    );
+  };
+
+  if (claim.modifiedCount !== ids.length) {
+    await rollbackStatuses();
+    return res.status(409).json({
+      success: false,
+      message: 'Batch not approved — one or more requests were processed by someone else. No changes were made.',
+      details: [{ reason: 'Concurrent update' }],
+    });
+  }
+
+  // 2. Decrement stock per inventory item.
+  const decremented = [];
+  for (const [itemId, qty] of validation.requestedByItem) {
+    const updated = await GuitarInventory.findOneAndUpdate(
+      { _id: itemId, availableQuantity: { $gte: qty } },
+      { $inc: { availableQuantity: -qty } },
+      { new: true }
+    );
+    if (!updated) {
+      for (const rollback of decremented) {
+        await GuitarInventory.updateOne({ _id: rollback.itemId }, { $inc: { availableQuantity: rollback.qty } });
+      }
+      await rollbackStatuses();
+      return res.status(409).json({
+        success: false,
+        message: 'Batch not approved — stock changed while validating. No changes were made.',
+        details: [{ inventoryItemId: itemId, reason: 'Insufficient stock' }],
+      });
+    }
+    decremented.push({ itemId, qty });
+  }
+
+  // 3. Create the project material + allocation records (idempotent per request).
+  const results = [];
+  const notifications = [];
+  for (const request of requests) {
+    const item = validation.items.get(String(request.inventoryItemId));
+    const project = validation.projects.get(String(request.projectId));
+
+    let material = await ProjectMaterial.findOne({ materialRequestId: request._id });
+    if (!material) {
+      material = await ProjectMaterial.create({
+        projectId: request.projectId,
+        name: item?.name || request.materialName || 'Material',
+        quantity: request.quantity,
+        source: 'guitar',
+        inventoryItemId: request.inventoryItemId,
+        materialRequestId: request._id,
+        addedBy: adminId,
+        image: request.imageUrl || null,
+        imagePublicId: request.imagePublicId || null,
+        specifications: request.specifications || '',
+        documentUrl: request.documentUrl || null,
+        documentPublicId: request.documentPublicId || null,
+        documentOriginalName: request.documentOriginalName || null,
+      });
+    }
+
+    const allocation = await InventoryAllocation.create({
+      inventoryItemId: request.inventoryItemId,
+      projectId: request.projectId,
+      materialRequestId: request._id,
+      quantity: request.quantity,
+      allocatedBy: adminId,
+      allocatedAt: new Date(),
+    });
+
+    request.status = 'approved';
+    request.reviewedBy = adminId;
+    request.reviewedAt = reviewedAt;
+    await request.populate(REQUEST_POPULATE);
+
+    if (project?.teamLeaderId) {
+      notifications.push({
+        userId: project.teamLeaderId,
+        type: 'material_request_approved',
+        title: 'Material Request Approved',
+        message: `Project Admin ${req.user.name || 'Project Admin'} approved your request for ${request.quantity}x "${item?.name || 'material'}" for project "${project.name}".`,
+        relatedId: request._id,
+        link: `/projects/${project._id}`,
+        actionText: 'View Materials',
+        metadata: {
+          actorId: adminId,
+          actorName: req.user.name || 'Project Admin',
+          projectId: project._id,
+          projectName: project.name,
+          entityName: item?.name,
+          quantity: request.quantity,
+          action: 'approved',
+        },
+      });
+    }
+
+    results.push({ request, material, allocation });
+  }
+
+  if (notifications.length) {
+    createNotifications(notifications).catch((e) =>
+      console.error('[Notification] bulk material_request_approved:', e.message)
+    );
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: `${results.length} material request(s) approved.`,
+    data: { approved: results.length, results },
+  });
+}
+
+// ── POST /api/material-requests/bulk-reject ───────────────────────────────────
+// Body: { requestIds: string[], rejectionReason: string }
+// All-or-nothing, same contract as bulk-approve.
+router.post('/bulk-reject', requireAuth, requireRole('project_admin'), async (req, res) => {
+  try {
+    const adminId = req.user.userId;
+    const reason = typeof req.body?.rejectionReason === 'string' ? req.body.rejectionReason.trim() : '';
+
+    if (!reason) {
+      return res.status(400).json({
+        success: false,
+        message: 'rejectionReason is required when rejecting material requests',
+      });
+    }
+    if (reason.length > 2000) {
+      return res.status(400).json({ success: false, message: 'rejectionReason must be 2000 characters or fewer' });
+    }
+
+    const normalized = normalizeBatchIds(req.body?.requestIds);
+    if (normalized.error) {
+      return res.status(400).json({ success: false, message: normalized.error });
+    }
+
+    const { requests, problems } = await loadPendingBatch(normalized.ids);
+    const allProblems = (normalized.problems || []).concat(problems);
+    if (allProblems.length > 0 || requests.length === 0) {
+      return res.status(422).json({
+        success: false,
+        message: 'Batch not rejected — no changes were made',
+        details: allProblems.length ? allProblems : [{ reason: 'No pending requests in batch' }],
+      });
+    }
+
+    const reviewedAt = new Date();
+    const ids = requests.map((r) => r._id);
+    const claim = await MaterialRequest.updateMany(
+      { _id: { $in: ids }, status: 'pending' },
+      { $set: { status: 'rejected', rejectionReason: reason, reviewedBy: adminId, reviewedAt } }
+    );
+
+    if (claim.modifiedCount !== ids.length) {
+      await MaterialRequest.updateMany(
+        { _id: { $in: ids }, status: 'rejected', reviewedBy: adminId, reviewedAt },
+        { $set: { status: 'pending', rejectionReason: null, reviewedBy: null, reviewedAt: null } }
+      );
+      return res.status(409).json({
+        success: false,
+        message: 'Batch not rejected — one or more requests were processed by someone else. No changes were made.',
+        details: [{ reason: 'Concurrent update' }],
+      });
+    }
+
+    // Batch the notification lookup: one query for every project in the batch.
+    const projectIds = [...new Set(requests.map((r) => String(r.projectId)))];
+    const itemIds = [...new Set(requests.map((r) => String(r.inventoryItemId)))];
+    const [projects, items] = await Promise.all([
+      Project.find({ _id: { $in: projectIds } }).select('name teamLeaderId').lean(),
+      GuitarInventory.find({ _id: { $in: itemIds } }).select('name').lean(),
+    ]);
+    const projectMap = new Map(projects.map((p) => [p._id.toString(), p]));
+    const itemMap = new Map(items.map((i) => [i._id.toString(), i]));
+
+    const notifications = [];
+    for (const request of requests) {
+      const project = projectMap.get(String(request.projectId));
+      const item = itemMap.get(String(request.inventoryItemId));
+      if (!project?.teamLeaderId) continue;
+      notifications.push({
+        userId: project.teamLeaderId,
+        type: 'material_request_rejected',
+        title: 'Material Request Rejected',
+        message: `Your request for ${request.quantity}x "${item?.name || 'item'}" for project "${project.name}" was rejected by ${req.user.name || 'Project Admin'}. Reason: ${reason}`,
+        relatedId: request._id,
+        link: `/projects/${project._id}`,
+        actionText: 'View Request History',
+        metadata: {
+          actorId: adminId,
+          actorName: req.user.name || 'Project Admin',
+          projectId: project._id,
+          projectName: project.name,
+          entityName: item?.name,
+          quantity: request.quantity,
+          reason,
+          action: 'rejected',
+        },
+      });
+    }
+    if (notifications.length) {
+      createNotifications(notifications).catch((e) =>
+        console.error('[Notification] bulk material_request_rejected:', e.message)
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `${requests.length} material request(s) rejected.`,
+      data: { rejected: requests.length, requestIds: requests.map((r) => r._id) },
+    });
+  } catch (error) {
+    return sendError(res, error);
   }
 });
 
@@ -308,7 +772,7 @@ router.patch('/:requestId/approve', requireAuth, requireRole('project_admin'), a
     if (!invItem) {
       return res.status(404).json({ success: false, message: 'Inventory item no longer exists' });
     }
-    if (request.quantity <= 0) {
+    if (!isWholeNumber(request.quantity, { min: 1 })) {
       return res.status(400).json({ success: false, message: 'Invalid request quantity' });
     }
     if (request.quantity > invItem.availableQuantity) {
@@ -374,34 +838,63 @@ router.patch('/:requestId/approve', requireAuth, requireRole('project_admin'), a
     }
 
     // Step C: Create ProjectMaterial entry (guitar source) — prevent duplicate entries
-    let material = await ProjectMaterial.findOne({ materialRequestId: updatedRequest._id });
-    if (!material) {
-      material = await ProjectMaterial.create({
-        projectId: updatedRequest.projectId,
-        name: invItem.name,
-        quantity: updatedRequest.quantity,
-        source: 'guitar',
+    // Step D: Create InventoryAllocation record
+    // Both writes are compensated if they fail: the request goes back to pending and
+    // the deducted stock is restored, so a half-approved request can never exist.
+    let material = null;
+    let allocation = null;
+    let createdMaterial = false;
+    try {
+      material = await ProjectMaterial.findOne({ materialRequestId: updatedRequest._id });
+      if (!material) {
+        material = await ProjectMaterial.create({
+          projectId: updatedRequest.projectId,
+          name: invItem.name,
+          quantity: updatedRequest.quantity,
+          source: 'guitar',
+          inventoryItemId: invItem._id,
+          materialRequestId: updatedRequest._id,
+          addedBy: adminId, // SECURITY: JWT-derived
+          image: updatedRequest.imageUrl || null,
+          imagePublicId: updatedRequest.imagePublicId || null,
+          specifications: updatedRequest.specifications || '',
+          documentUrl: updatedRequest.documentUrl || null,
+          documentPublicId: updatedRequest.documentPublicId || null,
+          documentOriginalName: updatedRequest.documentOriginalName || null,
+        });
+        createdMaterial = true;
+      }
+
+      allocation = await InventoryAllocation.create({
         inventoryItemId: invItem._id,
+        projectId: updatedRequest.projectId,
         materialRequestId: updatedRequest._id,
-        addedBy: adminId, // SECURITY: JWT-derived
-        image: updatedRequest.imageUrl || null,
-        imagePublicId: updatedRequest.imagePublicId || null,
-        specifications: updatedRequest.specifications || '',
-        documentUrl: updatedRequest.documentUrl || null,
-        documentPublicId: updatedRequest.documentPublicId || null,
-        documentOriginalName: updatedRequest.documentOriginalName || null,
+        quantity: updatedRequest.quantity,
+        allocatedBy: adminId, // SECURITY: JWT-derived
+        allocatedAt: new Date(),
+      });
+    } catch (workflowError) {
+      console.error('[material-requests] approval workflow failed, compensating:', workflowError);
+      try {
+        await GuitarInventory.updateOne(
+          { _id: invItem._id },
+          { $inc: { availableQuantity: updatedRequest.quantity } }
+        );
+        await MaterialRequest.updateOne(
+          { _id: updatedRequest._id },
+          { $set: { status: 'pending', reviewedBy: null, reviewedAt: null } }
+        );
+        if (createdMaterial && material?._id) {
+          await ProjectMaterial.deleteOne({ _id: material._id });
+        }
+      } catch (rollbackError) {
+        console.error('[material-requests] compensation failed:', rollbackError);
+      }
+      return res.status(500).json({
+        success: false,
+        message: 'Approval could not be completed. Inventory and request status were restored — please retry.',
       });
     }
-
-    // Step D: Create InventoryAllocation record
-    const allocation = await InventoryAllocation.create({
-      inventoryItemId: invItem._id,
-      projectId: updatedRequest.projectId,
-      materialRequestId: updatedRequest._id,
-      quantity: updatedRequest.quantity,
-      allocatedBy: adminId, // SECURITY: JWT-derived
-      allocatedAt: new Date(),
-    });
 
     // Populate for response
     await updatedRequest.populate('requestedBy', 'name email role department semester');
@@ -448,7 +941,7 @@ router.patch('/:requestId/approve', requireAuth, requireRole('project_admin'), a
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -466,6 +959,12 @@ router.patch('/:requestId/reject', requireAuth, requireRole('project_admin'), as
       return res.status(400).json({
         success: false,
         message: 'rejectionReason is required when rejecting a material request',
+      });
+    }
+    if (rejectionReason.trim().length > 2000) {
+      return res.status(400).json({
+        success: false,
+        message: 'rejectionReason must be 2000 characters or fewer',
       });
     }
 
@@ -533,7 +1032,7 @@ router.patch('/:requestId/reject', requireAuth, requireRole('project_admin'), as
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 

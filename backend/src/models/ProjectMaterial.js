@@ -86,6 +86,8 @@ const projectMaterialSchema = new mongoose.Schema(
 );
 
 projectMaterialSchema.index({ projectId: 1, createdAt: 1 });
+// Idempotent approval workflow looks this up before creating a guitar row.
+projectMaterialSchema.index({ materialRequestId: 1 });
 
 const ProjectMaterial = mongoose.model('ProjectMaterial', projectMaterialSchema);
 

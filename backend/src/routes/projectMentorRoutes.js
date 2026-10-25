@@ -2,9 +2,11 @@ import express from 'express';
 import Project from '../models/Project.js';
 import User from '../models/User.js';
 import ProjectMentor from '../models/ProjectMentor.js';
+import ProjectMembership from '../models/ProjectMembership.js';
 import { createNotification } from '../services/notificationService.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { requireRole } from '../middleware/requireRole.js';
+import { isValidObjectId, sendError } from '../lib/http.js';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // PROJECT MENTOR ROUTER
@@ -125,7 +127,7 @@ projectMentorRouter.post(
       if (error.name === 'CastError') {
         return res.status(400).json({ success: false, message: 'Invalid ID format' });
       }
-      res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );
@@ -145,7 +147,9 @@ projectMentorRouter.get('/:projectId/mentors', requireAuth, async (req, res) => 
 
     const mentors = await ProjectMentor.find({ projectId })
       .populate('mentorId', 'name email role department semester profileImage') // Safe fields — no passwords
-      .sort({ isPrimary: -1, assignedAt: 1 }); // Primary first, then by assignment order
+      .sort({ isPrimary: -1, assignedAt: 1 }) // Primary first, then by assignment order
+      .limit(50)
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -157,7 +161,7 @@ projectMentorRouter.get('/:projectId/mentors', requireAuth, async (req, res) => 
     if (error.name === 'CastError') {
       return res.status(400).json({ success: false, message: 'Invalid project ID format' });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -212,7 +216,7 @@ projectMentorRouter.patch(
       if (error.name === 'CastError') {
         return res.status(400).json({ success: false, message: 'Invalid ID format' });
       }
-      res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );
@@ -296,7 +300,7 @@ projectMentorRouter.delete(
       if (error.name === 'CastError') {
         return res.status(400).json({ success: false, message: 'Invalid ID format' });
       }
-      res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );
@@ -309,9 +313,10 @@ const mentorRouter = express.Router();
 // SECURITY: project_admin can look up any mentor; faculty_mentor can only see themselves.
 mentorRouter.get('/:mentorId/projects', requireAuth, async (req, res) => {
   try {
-    const { mentorId } = req.params;
+    const { mentorId: mentorIdParam } = req.params;
     const actingUserId = req.user.userId;
     const actingRole   = req.user.role;
+    const mentorId = mentorIdParam === 'me' ? actingUserId : mentorIdParam;
 
     // Authorization: project_admin sees all; mentor sees own only
     if (actingRole === 'faculty_mentor' && actingUserId !== mentorId) {
@@ -326,9 +331,12 @@ mentorRouter.get('/:mentorId/projects', requireAuth, async (req, res) => {
         message: 'You do not have permission to perform this action',
       });
     }
+    if (!isValidObjectId(mentorId)) {
+      return res.status(400).json({ success: false, message: 'Invalid mentor ID format' });
+    }
 
     // 1. Verify mentor user exists
-    const mentor = await User.findById(mentorId);
+    const mentor = await User.findById(mentorId).lean();
     if (!mentor) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
@@ -351,13 +359,28 @@ mentorRouter.get('/:mentorId/projects', requireAuth, async (req, res) => {
           select: 'name email role profileImage department semester',
         },
       })
-      .sort({ isPrimary: -1, assignedAt: 1 });
+      .sort({ isPrimary: -1, assignedAt: 1 })
+      .limit(200)
+      .lean();
+
+    // 4. Roster size per project in ONE aggregate (this payload previously had no
+    //    memberCount, so the mentor dashboard called /projects/:id/members per row).
+    const projectIds = assignments.map((a) => a.projectId?._id).filter(Boolean);
+    const countRows = projectIds.length
+      ? await ProjectMembership.aggregate([
+          { $match: { projectId: { $in: projectIds } } },
+          { $group: { _id: '$projectId', count: { $sum: 1 } } },
+        ])
+      : [];
+    const countMap = new Map(countRows.map((row) => [row._id.toString(), row.count]));
 
     const projects = assignments.map((a) => ({
       assignmentId: a._id,
       isPrimary: a.isPrimary,
       assignedAt: a.assignedAt,
-      project: a.projectId,
+      project: a.projectId
+        ? { ...a.projectId, memberCount: countMap.get(a.projectId._id.toString()) || 0 }
+        : null,
     }));
 
     res.status(200).json({
@@ -367,10 +390,7 @@ mentorRouter.get('/:mentorId/projects', requireAuth, async (req, res) => {
       data: projects,
     });
   } catch (error) {
-    if (error.name === 'CastError') {
-      return res.status(400).json({ success: false, message: 'Invalid mentor ID format' });
-    }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 

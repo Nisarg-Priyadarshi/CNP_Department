@@ -9,6 +9,7 @@ import User from '../models/User.js';
 import { createNotification, createNotifications } from '../services/notificationService.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { requireAnyRole } from '../middleware/requireRole.js';
+import { isValidObjectId, sendError } from '../lib/http.js';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // HELPER — find the primary faculty_mentor for a project
@@ -166,10 +167,13 @@ clubJoinRouter.post('/:clubId/join', requireAuth, requireAnyRole('student'), asy
       data: joinRequest,
     });
   } catch (error) {
-    if (error.name === 'CastError') {
-      return res.status(400).json({ success: false, message: 'Invalid ID format' });
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: 'A pending club join request already exists for this student and club',
+      });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -310,10 +314,13 @@ projectJoinRouter.post('/:projectId/join', requireAuth, requireAnyRole('student'
       data: joinRequest,
     });
   } catch (error) {
-    if (error.name === 'CastError') {
-      return res.status(400).json({ success: false, message: 'Invalid ID format' });
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: 'A pending project join request already exists for this student and project',
+      });
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendError(res, error);
   }
 });
 
@@ -328,6 +335,16 @@ projectJoinRouter.post('/:projectId/join', requireAuth, requireAnyRole('student'
 // ══════════════════════════════════════════════════════════════════════════════
 const joinRequestRouter = express.Router();
 
+const JOIN_STATUSES = ['pending', 'approved', 'rejected'];
+
+/** Parse an optional ?status= filter. Returns `{ valid, value }`. */
+function parseStatusFilter(value) {
+  if (value === undefined || value === '' || value === 'all') return { valid: true, value: null };
+  const normalized = String(value).toLowerCase();
+  if (!JOIN_STATUSES.includes(normalized)) return { valid: false };
+  return { valid: true, value: normalized };
+}
+
 // ── GET /api/join-requests/club/all ──────────────────────────────────────────
 // Fetch club join requests across all clubs. Only for club_admin.
 joinRequestRouter.get(
@@ -340,7 +357,9 @@ joinRequestRouter.get(
         .populate('studentId', 'name email role department semester enrollmentNumber')
         .populate('clubId', 'name description')
         .populate('reviewerId', 'name email role department semester')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 })
+        .limit(500)
+        .lean();
 
       res.status(200).json({
         success: true,
@@ -348,7 +367,7 @@ joinRequestRouter.get(
         data: requests,
       });
     } catch (error) {
-      res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );
@@ -365,7 +384,9 @@ joinRequestRouter.get(
         .populate('studentId', 'name email role department semester enrollmentNumber')
         .populate('projectId', 'name description status')
         .populate('reviewerId', 'name email role department semester')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 })
+        .limit(500)
+        .lean();
 
       res.status(200).json({
         success: true,
@@ -373,7 +394,7 @@ joinRequestRouter.get(
         data: requests,
       });
     } catch (error) {
-      res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );
@@ -390,12 +411,17 @@ joinRequestRouter.get(
   async (req, res) => {
     try {
       const { clubId } = req.params;
+      const status = parseStatusFilter(req.query.status);
+      if (!status.valid) {
+        return res.status(400).json({ success: false, message: `status must be one of: ${JOIN_STATUSES.join(', ')}` });
+      }
+
+      const club = await Club.findById(clubId).select('name facultyCoordinatorId').lean();
+      if (!club) {
+        return res.status(404).json({ success: false, message: 'Club not found' });
+      }
 
       if (req.user.role === 'faculty_coordinator') {
-        const club = await Club.findById(clubId);
-        if (!club) {
-          return res.status(404).json({ success: false, message: 'Club not found' });
-        }
         if (!club.facultyCoordinatorId || club.facultyCoordinatorId.toString() !== req.user.userId) {
           return res.status(403).json({
             success: false,
@@ -404,11 +430,16 @@ joinRequestRouter.get(
         }
       }
 
-      const requests = await JoinRequest.find({ clubId, requestType: 'club' })
+      const filter = { clubId, requestType: 'club' };
+      if (status.value) filter.status = status.value;
+
+      const requests = await JoinRequest.find(filter)
         .populate('studentId', 'name email role department semester enrollmentNumber')
         .populate('clubId', 'name description')
         .populate('reviewerId', 'name email role department semester')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 })
+        .limit(500)
+        .lean();
 
       res.status(200).json({
         success: true,
@@ -419,7 +450,7 @@ joinRequestRouter.get(
       if (error.name === 'CastError') {
         return res.status(400).json({ success: false, message: 'Invalid ID format' });
       }
-      res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );
@@ -436,6 +467,15 @@ joinRequestRouter.get(
   async (req, res) => {
     try {
       const { projectId } = req.params;
+      const status = parseStatusFilter(req.query.status);
+      if (!status.valid) {
+        return res.status(400).json({ success: false, message: `status must be one of: ${JOIN_STATUSES.join(', ')}` });
+      }
+
+      const project = await Project.findById(projectId).select('name').lean();
+      if (!project) {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
 
       if (req.user.role === 'faculty_mentor') {
         const isMentor = await ProjectMentor.findOne({
@@ -450,11 +490,16 @@ joinRequestRouter.get(
         }
       }
 
-      const requests = await JoinRequest.find({ projectId, requestType: 'project' })
+      const filter = { projectId, requestType: 'project' };
+      if (status.value) filter.status = status.value;
+
+      const requests = await JoinRequest.find(filter)
         .populate('studentId', 'name email role department semester enrollmentNumber')
         .populate('projectId', 'name description status')
         .populate('reviewerId', 'name email role department semester')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 })
+        .limit(500)
+        .lean();
 
       res.status(200).json({
         success: true,
@@ -465,7 +510,7 @@ joinRequestRouter.get(
       if (error.name === 'CastError') {
         return res.status(400).json({ success: false, message: 'Invalid ID format' });
       }
-      res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );
@@ -480,13 +525,24 @@ joinRequestRouter.get(
   async (req, res) => {
     try {
       const reviewerId = req.user.userId; // SECURITY: from JWT
+      const statusParam = req.query.status;
+      const status = parseStatusFilter(statusParam);
+      if (!status.valid) {
+        return res.status(400).json({ success: false, message: `status must be one of: ${JOIN_STATUSES.join(', ')}, all` });
+      }
 
-      // Fetch all pending requests where this user is the reviewer
-      const requests = await JoinRequest.find({ reviewerId, status: 'pending' })
+      // Default stays "pending" for backwards compatibility with the reviewer queue.
+      const filter = { reviewerId };
+      if (statusParam === undefined) filter.status = 'pending';
+      else if (status.value) filter.status = status.value;
+
+      const requests = await JoinRequest.find(filter)
         .populate('studentId', 'name email role department semester enrollmentNumber')
         .populate('clubId', 'name description')
         .populate('projectId', 'name description status')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 })
+        .limit(500)
+        .lean();
 
       res.status(200).json({
         success: true,
@@ -500,7 +556,7 @@ joinRequestRouter.get(
         data: requests,
       });
     } catch (error) {
-      res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );
@@ -515,12 +571,21 @@ joinRequestRouter.get(
   async (req, res) => {
     try {
       const studentId = req.user.userId; // SECURITY: from JWT
+      const status = parseStatusFilter(req.query.status);
+      if (!status.valid) {
+        return res.status(400).json({ success: false, message: `status must be one of: ${JOIN_STATUSES.join(', ')}, all` });
+      }
 
-      const requests = await JoinRequest.find({ studentId })
+      const filter = { studentId };
+      if (status.value) filter.status = status.value;
+
+      const requests = await JoinRequest.find(filter)
         .populate('clubId', 'name description')
         .populate('projectId', 'name description status')
         .populate('reviewerId', 'name email role department semester')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 })
+        .limit(500)
+        .lean();
 
       res.status(200).json({
         success: true,
@@ -534,7 +599,7 @@ joinRequestRouter.get(
         data: requests,
       });
     } catch (error) {
-      res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );
@@ -546,6 +611,10 @@ joinRequestRouter.get(
 //   - Faculty Coordinator can approve only requests for their assigned club
 //   - Project Admin can approve any project request
 //   - Primary Faculty Mentor can approve only requests for their assigned project
+//
+// INTEGRITY: the pending → approved transition is claimed with a single atomic
+// findOneAndUpdate. Two reviewers clicking at the same time can no longer both
+// create a membership (the loser gets 409 and no writes happen).
 joinRequestRouter.patch(
   '/:requestId/approve',
   requireAuth,
@@ -554,7 +623,11 @@ joinRequestRouter.patch(
     try {
       const { requestId } = req.params;
       const actingUserId = req.user.userId; // SECURITY: from JWT, never from body
-      const actingRole   = req.user.role;
+      const actingRole = req.user.role;
+
+      if (!isValidObjectId(requestId)) {
+        return res.status(400).json({ success: false, message: 'Invalid join request ID format' });
+      }
 
       // 1. Find the join request
       const joinRequest = await JoinRequest.findById(requestId);
@@ -572,7 +645,6 @@ joinRequestRouter.patch(
 
       // ── CLUB REQUEST ─────────────────────────────────────────────────────────
       if (joinRequest.requestType === 'club') {
-        // Only faculty_coordinator and club_admin can approve club requests
         if (!['faculty_coordinator', 'club_admin'].includes(actingRole)) {
           return res.status(403).json({
             success: false,
@@ -580,69 +652,89 @@ joinRequestRouter.patch(
           });
         }
 
-        const club = await Club.findById(joinRequest.clubId);
+        const club = await Club.findById(joinRequest.clubId).select('name facultyCoordinatorId').lean();
         if (!club) {
           return res.status(404).json({ success: false, message: 'Club not found' });
         }
-
-        // Faculty Coordinator: must be the assigned coordinator of THIS club
         if (actingRole === 'faculty_coordinator') {
-          if (
-            !club.facultyCoordinatorId ||
-            club.facultyCoordinatorId.toString() !== actingUserId
-          ) {
+          if (!club.facultyCoordinatorId || club.facultyCoordinatorId.toString() !== actingUserId) {
             return res.status(403).json({
               success: false,
               message: 'You are not authorized to manage this club',
             });
           }
         }
-        // club_admin: no additional check required (global access)
+        // club_admin: department-wide access (documented role model)
 
-        // Guard against duplicate membership
-        const existingMembership = await ClubMembership.findOne({
-          studentId: joinRequest.studentId,
-          clubId: joinRequest.clubId,
+        // 3. Atomically claim the pending → approved transition.
+        const claimed = await JoinRequest.findOneAndUpdate(
+          { _id: requestId, status: 'pending' },
+          { $set: { status: 'approved' } },
+          { new: true }
+        );
+        if (!claimed) {
+          return res.status(409).json({
+            success: false,
+            message: 'This request was already processed by another reviewer.',
+          });
+        }
+
+        // 4. Create the membership, idempotently.
+        let membership = await ClubMembership.findOne({
+          studentId: claimed.studentId,
+          clubId: claimed.clubId,
         });
-        if (existingMembership) {
-          joinRequest.status = 'approved';
-          await joinRequest.save();
+        const alreadyMember = Boolean(membership);
+
+        if (!membership) {
+          try {
+            membership = await ClubMembership.create({
+              studentId: claimed.studentId,
+              clubId: claimed.clubId,
+              membershipType: 'member',
+              position: null,
+            });
+          } catch (membershipError) {
+            if (membershipError.code === 11000) {
+              // Lost a race with an admin add — treat as "already a member".
+              membership = await ClubMembership.findOne({
+                studentId: claimed.studentId,
+                clubId: claimed.clubId,
+              });
+            } else {
+              await JoinRequest.updateOne({ _id: requestId, status: 'approved' }, { $set: { status: 'pending' } });
+              return sendError(res, membershipError);
+            }
+          }
+        }
+
+        if (membership) {
+          await membership.populate('studentId', 'name email role department semester enrollmentNumber');
+          await membership.populate('clubId', 'name');
+        }
+
+        if (alreadyMember) {
           return res.status(200).json({
             success: true,
             message:
               'Student is already a member of this club. Request marked approved without creating a duplicate membership.',
-            data: joinRequest,
+            data: claimed,
           });
         }
 
-        // Create ClubMembership — default type is "member"
-        const membership = await ClubMembership.create({
-          studentId: joinRequest.studentId,
-          clubId: joinRequest.clubId,
-          membershipType: 'member',
-          position: null,
-        });
-
-        // Update request status
-        joinRequest.status = 'approved';
-        await joinRequest.save();
-
-        await membership.populate('studentId', 'name email role department semester enrollmentNumber');
-        await membership.populate('clubId', 'name');
-
-        // Notify the student that their club join request was approved
+        // 5. Notify the student
         const approverName = req.user.name || 'Faculty Coordinator';
         try {
           await createNotification({
-            userId: joinRequest.studentId,
+            userId: claimed.studentId,
             type: 'club_join_approved',
             title: 'Club Join Request Approved',
             message: `Your request to join ${club.name} was approved by ${approverName}. Welcome to the club!`,
-            relatedId: joinRequest._id,
+            relatedId: claimed._id,
             link: `/clubs/${club._id}`,
             actionText: 'View Club',
             metadata: {
-              actorId: req.user.userId,
+              actorId: actingUserId,
               actorName: approverName,
               clubId: club._id,
               clubName: club.name,
@@ -656,13 +748,12 @@ joinRequestRouter.patch(
         return res.status(200).json({
           success: true,
           message: 'Club join request approved. Student added as a club member.',
-          data: { joinRequest, membership },
+          data: { joinRequest: claimed, membership },
         });
       }
 
       // ── PROJECT REQUEST ──────────────────────────────────────────────────────
       if (joinRequest.requestType === 'project') {
-        // Only faculty_mentor and project_admin can approve project requests
         if (!['faculty_mentor', 'project_admin'].includes(actingRole)) {
           return res.status(403).json({
             success: false,
@@ -671,7 +762,6 @@ joinRequestRouter.patch(
         }
 
         if (actingRole === 'faculty_mentor') {
-          // Must be the primary mentor of this specific project
           const primaryMentor = await getPrimaryMentor(joinRequest.projectId);
           const isPrimary = primaryMentor && primaryMentor._id.toString() === actingUserId;
           if (!isPrimary) {
@@ -681,53 +771,82 @@ joinRequestRouter.patch(
             });
           }
         }
-        // project_admin: no additional check required (global access)
+        // project_admin: department-wide access (documented role model)
 
-        // Guard against duplicate membership
-        const existingMembership = await ProjectMembership.findOne({
-          studentId: joinRequest.studentId,
-          projectId: joinRequest.projectId,
+        const project = await Project.findById(joinRequest.projectId).select('name status').lean();
+        if (!project) {
+          return res.status(404).json({ success: false, message: 'Project not found' });
+        }
+
+        // 3. Atomically claim the pending → approved transition.
+        const claimed = await JoinRequest.findOneAndUpdate(
+          { _id: requestId, status: 'pending' },
+          { $set: { status: 'approved' } },
+          { new: true }
+        );
+        if (!claimed) {
+          return res.status(409).json({
+            success: false,
+            message: 'This request was already processed by another reviewer.',
+          });
+        }
+
+        // 4. Create the membership, idempotently.
+        let membership = await ProjectMembership.findOne({
+          studentId: claimed.studentId,
+          projectId: claimed.projectId,
         });
-        if (existingMembership) {
-          joinRequest.status = 'approved';
-          await joinRequest.save();
+        const alreadyMember = Boolean(membership);
+
+        if (!membership) {
+          try {
+            membership = await ProjectMembership.create({
+              studentId: claimed.studentId,
+              projectId: claimed.projectId,
+            });
+          } catch (membershipError) {
+            if (membershipError.code === 11000) {
+              membership = await ProjectMembership.findOne({
+                studentId: claimed.studentId,
+                projectId: claimed.projectId,
+              });
+            } else {
+              await JoinRequest.updateOne({ _id: requestId, status: 'approved' }, { $set: { status: 'pending' } });
+              return sendError(res, membershipError);
+            }
+          }
+        }
+
+        if (membership) {
+          await membership.populate('studentId', 'name email role department semester enrollmentNumber');
+          await membership.populate('projectId', 'name status');
+        }
+
+        if (alreadyMember) {
           return res.status(200).json({
             success: true,
             message:
               'Student is already a member of this project. Request marked approved without creating a duplicate membership.',
-            data: joinRequest,
+            data: claimed,
           });
         }
 
-        // Create ProjectMembership
-        const membership = await ProjectMembership.create({
-          studentId: joinRequest.studentId,
-          projectId: joinRequest.projectId,
-        });
-
-        // Update request status
-        joinRequest.status = 'approved';
-        await joinRequest.save();
-
-        await membership.populate('studentId', 'name email role department semester enrollmentNumber');
-        await membership.populate('projectId', 'name status');
-
-        // Notify the student that their project join request was approved
+        // 5. Notify the student
         const approverName = req.user.name || 'Faculty Mentor';
-        const projName = membership.projectId?.name || 'the project';
+        const projName = project.name || 'the project';
         try {
           await createNotification({
-            userId: joinRequest.studentId,
+            userId: claimed.studentId,
             type: 'project_join_approved',
             title: 'Project Join Request Approved',
             message: `Your request to join project "${projName}" was approved by ${approverName}. Welcome to the team!`,
-            relatedId: joinRequest._id,
-            link: `/projects/${joinRequest.projectId}`,
+            relatedId: claimed._id,
+            link: `/projects/${claimed.projectId}`,
             actionText: 'View Project',
             metadata: {
-              actorId: req.user.userId,
+              actorId: actingUserId,
               actorName: approverName,
-              projectId: joinRequest.projectId,
+              projectId: claimed.projectId,
               projectName: projName,
               action: 'approved',
             },
@@ -739,16 +858,13 @@ joinRequestRouter.patch(
         return res.status(200).json({
           success: true,
           message: 'Project join request approved. Student added as a project member.',
-          data: { joinRequest, membership },
+          data: { joinRequest: claimed, membership },
         });
       }
 
-      res.status(400).json({ success: false, message: 'Unknown request type' });
+      return res.status(400).json({ success: false, message: 'Unknown request type' });
     } catch (error) {
-      if (error.name === 'CastError') {
-        return res.status(400).json({ success: false, message: 'Invalid ID format' });
-      }
-      res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );
@@ -823,9 +939,19 @@ joinRequestRouter.patch(
         }
       }
 
-      // 4. Reject — no membership created
-      joinRequest.status = 'rejected';
-      await joinRequest.save();
+      // 4. Reject atomically — no membership created. Two reviewers rejecting at
+      // the same time cannot both emit a notification / overwrite each other.
+      const rejectedRequest = await JoinRequest.findOneAndUpdate(
+        { _id: requestId, status: 'pending' },
+        { $set: { status: 'rejected' } },
+        { new: true }
+      );
+      if (!rejectedRequest) {
+        return res.status(409).json({
+          success: false,
+          message: 'This request was already processed by another reviewer.',
+        });
+      }
 
       // Notify the student about the rejection
       const reviewerName = req.user.name || 'Coordinator';
@@ -878,13 +1004,13 @@ joinRequestRouter.patch(
       res.status(200).json({
         success: true,
         message: 'Join request rejected',
-        data: joinRequest,
+        data: rejectedRequest,
       });
     } catch (error) {
       if (error.name === 'CastError') {
         return res.status(400).json({ success: false, message: 'Invalid ID format' });
       }
-      res.status(500).json({ success: false, message: error.message });
+      return sendError(res, error);
     }
   }
 );

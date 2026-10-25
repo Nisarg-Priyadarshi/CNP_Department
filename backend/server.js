@@ -18,6 +18,8 @@ import inventoryRoutes from './src/routes/inventoryRoutes.js';
 import materialRequestRoutes from './src/routes/materialRequestRoutes.js';
 import allocationRoutes from './src/routes/allocationRoutes.js';
 import notificationRoutes from './src/routes/notificationRoutes.js';
+import dashboardRoutes from './src/routes/dashboardRoutes.js';
+import searchRoutes from './src/routes/searchRoutes.js';
 import { startEventReminderScheduler } from './src/services/eventReminderService.js';
 
 dns.setServers(["8.8.8.8", "1.1.1.1"]);
@@ -44,6 +46,14 @@ app.use(
 );
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Express 5 leaves `req.body` undefined when a request has no (or an unparsed)
+// body. Every handler destructures it, so normalise it once here: a POST with no
+// body must reach the handler's own 400 validation, not throw a TypeError → 500.
+app.use((req, _res, next) => {
+  if (req.body === undefined || req.body === null) req.body = {};
+  next();
+});
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api', healthRoutes);
@@ -72,10 +82,38 @@ app.use('/api/inventory', inventoryRoutes);        // Task 2H: Guitar inventory 
 app.use('/api/material-requests', materialRequestRoutes); // Task 2H: material request workflow
 app.use('/api/allocations', allocationRoutes);     // Task 2H: inventory allocation history
 app.use('/api/notifications', notificationRoutes); // Task 2I: notifications
+app.use('/api/dashboard', dashboardRoutes);         // Aggregate summaries for the dashboard
+app.use('/api/search', searchRoutes);               // Shell command-palette records search
 
 // ─── 404 Fallback ─────────────────────────────────────────────────────────────
 app.use((_req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });
+});
+
+// ─── Error handler ────────────────────────────────────────────────────────────
+// Route handlers map their own errors (see src/lib/http.js). This catches the
+// cases that never reach a handler: malformed JSON bodies, oversized payloads
+// and anything express/multer throws before/after a handler.
+// It always answers JSON and never leaks a stack trace.
+// eslint-disable-next-line no-unused-vars
+app.use((err, _req, res, _next) => {
+  if (res.headersSent) return;
+
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ success: false, message: 'Invalid JSON body' });
+  }
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ success: false, message: 'Request body is too large' });
+  }
+  if (err?.name === 'MulterError') {
+    return res.status(400).json({ success: false, message: err.message });
+  }
+  if (Number.isInteger(err?.status) && err.status >= 400 && err.status < 500) {
+    return res.status(err.status).json({ success: false, message: err.message });
+  }
+
+  console.error('[server] Unhandled error:', err);
+  return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
 });
 
 // ─── Start Server ─────────────────────────────────────────────────────────────

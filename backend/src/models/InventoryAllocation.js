@@ -41,6 +41,9 @@ const inventoryAllocationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+inventoryAllocationSchema.index({ inventoryItemId: 1, allocatedAt: -1 });
+inventoryAllocationSchema.index({ projectId: 1, allocatedAt: -1 });
+
 const InventoryAllocation = mongoose.model('InventoryAllocation', inventoryAllocationSchema);
 
 export default InventoryAllocation;

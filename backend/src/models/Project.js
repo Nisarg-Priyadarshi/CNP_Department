@@ -2,8 +2,7 @@ import mongoose from 'mongoose';
 
 const PROJECT_STATUSES = ['active', 'completed', 'inactive'];
 
-const projectSchema = new mongoose.Schema(
-  {
+const projectSchema = new mongoose.Schema(  {
     name: {
       type: String,
       required: [true, 'Project name is required'],
@@ -49,6 +48,10 @@ const projectSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Directory status filter/grouping and newest-first listing.
+projectSchema.index({ status: 1 });
+projectSchema.index({ createdAt: -1 });
 
 const Project = mongoose.model('Project', projectSchema);
 

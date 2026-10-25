@@ -44,9 +44,19 @@ const clubSchema = new mongoose.Schema(
       ref: 'User',
       required: [true, 'createdBy is required'],
     },
+    // When the club was founded (institution date). Optional: `createdAt` is when the
+    // database record was created and is not the same thing.
+    foundedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
+
+// Directory / coordinator dashboards filter by coordinator and sort by creation.
+clubSchema.index({ facultyCoordinatorId: 1 });
+clubSchema.index({ createdAt: -1 });
 
 const Club = mongoose.model('Club', clubSchema);
 

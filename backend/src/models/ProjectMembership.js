@@ -22,6 +22,8 @@ const projectMembershipSchema = new mongoose.Schema(
 
 // ── Unique compound index: a student can only be a member of each project ONCE ──
 projectMembershipSchema.index({ studentId: 1, projectId: 1 }, { unique: true });
+// Roster / memberCount aggregation by project, and the "my projects" lookup.
+projectMembershipSchema.index({ projectId: 1 });
 
 const ProjectMembership = mongoose.model('ProjectMembership', projectMembershipSchema);
 

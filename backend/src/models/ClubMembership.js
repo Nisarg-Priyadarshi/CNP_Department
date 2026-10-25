@@ -38,6 +38,9 @@ const clubMembershipSchema = new mongoose.Schema(
 
 // ── Unique compound index: a student can only be a member of each club ONCE ──
 clubMembershipSchema.index({ studentId: 1, clubId: 1 }, { unique: true });
+// Club detail / roster queries, and the "my clubs" lookup used by the dashboard.
+clubMembershipSchema.index({ clubId: 1, joinedAt: 1 });
+clubMembershipSchema.index({ studentId: 1 });
 
 const ClubMembership = mongoose.model('ClubMembership', clubMembershipSchema);
 

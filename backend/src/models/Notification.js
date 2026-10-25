@@ -24,6 +24,37 @@ const NOTIFICATION_TYPES = [
   'event_reminder',
 ];
 
+/**
+ * Coarse family for the inbox filter. `type` stays the precise, documented event
+ * name (clients already depend on it); `kind` is the stable grouping the redesign
+ * asks for. The mapping is centralised here so every creation path agrees.
+ */
+const NOTIFICATION_KINDS = ['club', 'project', 'event', 'request', 'system', 'inventory'];
+
+const KIND_BY_TYPE = {
+  club_join_request: 'club',
+  club_join_approved: 'club',
+  club_join_rejected: 'club',
+  project_join_request: 'project',
+  project_join_approved: 'project',
+  project_join_rejected: 'project',
+  mentor_assigned: 'project',
+  project_update: 'project',
+  material_request_submitted: 'request',
+  material_request_created: 'request',
+  material_request_approved: 'request',
+  material_request_rejected: 'request',
+  material_request: 'request',
+  material_added: 'inventory',
+  project_material_added: 'inventory',
+  event_created: 'event',
+  event_reminder: 'event',
+};
+
+export function kindForNotificationType(type) {
+  return KIND_BY_TYPE[type] || 'system';
+}
+
 const notificationSchema = new mongoose.Schema(
   {
     // Recipient of the notification
@@ -40,6 +71,16 @@ const notificationSchema = new mongoose.Schema(
         values: NOTIFICATION_TYPES,
         message: `type must be one of: ${NOTIFICATION_TYPES.join(', ')}`,
       },
+    },
+    // Coarse family for the inbox filter. Derived from `type` on save so every
+    // existing creation path (notificationService, seed) keeps working untouched.
+    kind: {
+      type: String,
+      enum: {
+        values: NOTIFICATION_KINDS,
+        message: `kind must be one of: ${NOTIFICATION_KINDS.join(', ')}`,
+      },
+      default: null,
     },
     title: {
       type: String,
@@ -188,7 +229,17 @@ const notificationSchema = new mongoose.Schema(
 
 // Index for efficient unread-count queries
 notificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 });
+// Stable cursor pagination / inbox list (newest first, _id breaks createdAt ties).
+notificationSchema.index({ userId: 1, createdAt: -1, _id: -1 });
+
+// Derive `kind` from `type` when the caller did not set it explicitly.
+notificationSchema.pre('validate', function deriveKind(next) {
+  if (!this.kind && this.type) {
+    this.kind = kindForNotificationType(this.type);
+  }
+  next();
+});
 
 const Notification = mongoose.model('Notification', notificationSchema);
-
+export { NOTIFICATION_TYPES, NOTIFICATION_KINDS };
 export default Notification;
