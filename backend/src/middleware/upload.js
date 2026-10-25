@@ -60,6 +60,12 @@ export const uploadMixed = multer({
   fileFilter: fileFilter,
 });
 
+export const uploadDocs = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit for documents
+  fileFilter: docFilter,
+});
+
 /**
  * Converts a Multer file object (buffer) into a base64 data URI string
  * suitable for cloudinaryService.js

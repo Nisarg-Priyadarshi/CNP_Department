@@ -5,8 +5,8 @@ import JoinRequest from '../models/JoinRequest.js';
 import User from '../models/User.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { requireAnyRole } from '../middleware/requireRole.js';
-import { uploadImages, getBase64DataURI, handleUploadError } from '../middleware/upload.js';
-import { uploadImage, deleteAsset } from '../services/cloudinaryService.js';
+import { uploadImages, handleUploadError } from '../middleware/upload.js';
+import { replaceEntityImage } from '../services/cloudinaryService.js';
 import {
   boundedString,
   escapeRegex,
@@ -126,21 +126,14 @@ router.post(
         }
       }
 
-      const fileUri = getBase64DataURI(req.file);
-      const result = await uploadImage(fileUri, { folder: 'cnp/clubs' });
-
-      // Clean up old logo
-      if (club.logoPublicId) {
-        try {
-          await deleteAsset(club.logoPublicId, 'image');
-        } catch (err) {
-          console.error(`Failed to delete old club logo ${club.logoPublicId}:`, err.message);
-        }
-      }
-
-      club.logo = result.secure_url;
-      club.logoPublicId = result.public_id;
-      await club.save();
+      await replaceEntityImage({
+        document: club,
+        file: req.file,
+        folder: 'cnp/clubs',
+        urlField: 'logo',
+        publicIdField: 'logoPublicId',
+        logLabel: 'club logo',
+      });
 
       res.status(200).json({
         success: true,
@@ -184,21 +177,14 @@ router.post(
         }
       }
 
-      const fileUri = getBase64DataURI(req.file);
-      const result = await uploadImage(fileUri, { folder: 'cnp/clubs/covers' });
-
-      // Clean up old cover image
-      if (club.coverImagePublicId) {
-        try {
-          await deleteAsset(club.coverImagePublicId, 'image');
-        } catch (err) {
-          console.error(`Failed to delete old club cover image ${club.coverImagePublicId}:`, err.message);
-        }
-      }
-
-      club.coverImage = result.secure_url;
-      club.coverImagePublicId = result.public_id;
-      await club.save();
+      await replaceEntityImage({
+        document: club,
+        file: req.file,
+        folder: 'cnp/clubs/covers',
+        urlField: 'coverImage',
+        publicIdField: 'coverImagePublicId',
+        logLabel: 'club cover image',
+      });
 
       res.status(200).json({
         success: true,

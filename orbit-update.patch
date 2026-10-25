@@ -1,0 +1,619 @@
+diff --git a/frontend/src/app.css b/frontend/src/app.css
+index 9b740a4..7af3b60 100644
+--- a/frontend/src/app.css
++++ b/frontend/src/app.css
+@@ -4983,197 +4983,75 @@ input[type="number"]:focus {
+   animation: landing-twinkle 5s ease-in-out infinite alternate;
+ }
+ .landing-stage {
++  --rx: min(340px, 42vw);
++  --ry: 250px;
++  --orbit-dur: 36s;
+   position: relative;
+-  width: min(1180px, 100%);
+-  display: grid;
+-  grid-template-columns: 1fr minmax(260px, 1.1fr) 1fr;
+-  align-items: center;
+-  gap: 8px;
+-}
+-
+-/* Scenes */
+-.landing-scene {
+-  --orbit-r: 152px;
+-  position: relative;
+-  width: min(100%, 340px);
+-  aspect-ratio: 1;
+-  margin-inline: auto;
+-}
+-.landing-rise {
+-  position: absolute;
+-  inset: 0;
++  width: min(1100px, 100%);
++  min-height: calc(var(--ry) * 2 + 70px);
+   display: grid;
+   place-items: center;
+-  animation: landing-rise 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) 0.2s backwards;
+-}
+-.landing-rise-late {
+-  animation-delay: 0.6s;
+ }
+ 
+-/* Orbits */
++/* Icons circling the welcome text.
++   Base style = where each icon sits when nothing moves (angle = --p of a full turn). */
+ .landing-orbit {
+   position: absolute;
+-  inset: 0;
++  left: 50%;
++  top: 50%;
++  width: 0;
++  height: 0;
+ }
+ .landing-orbit-ring {
+   position: absolute;
+-  inset: calc(50% - var(--orbit-r));
+-  border-radius: 50%;
++  left: calc(var(--rx) * -1);
++  top: calc(var(--ry) * -1);
++  width: calc(var(--rx) * 2);
++  height: calc(var(--ry) * 2);
+   border: 1px dashed rgba(255, 255, 255, 0.18);
++  border-radius: 50%;
++  animation: landing-fade 1.6s ease-out 0.2s backwards;
+ }
+-.landing-orbit-spin {
++.landing-orbit-x,
++.landing-orbit-y {
+   position: absolute;
+-  inset: 0;
+-  animation: landing-spin var(--orbit-dur) linear infinite var(--orbit-dir);
++  left: 0;
++  top: 0;
+ }
+-.landing-orbit-item {
+-  position: absolute;
+-  left: 50%;
+-  top: 50%;
+-  width: 0;
+-  height: 0;
+-  transform: rotate(var(--a)) translateX(var(--orbit-r));
++/* x = rx*cos(a), y = ry*sin(a). Two sine-eased back-and-forth moves a quarter turn apart
++   draw the ellipse; the negative delays put every icon at its own point on it. */
++.landing-orbit-x {
++  translate: calc(var(--rx) * cos(var(--p) * 1turn)) 0;
++  animation: landing-orbit-x calc(var(--orbit-dur) / 2) cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
++  animation-delay: calc(var(--orbit-dur) * var(--p) * -1);
++}
++.landing-orbit-y {
++  translate: 0 calc(var(--ry) * sin(var(--p) * 1turn));
++  animation: landing-orbit-y calc(var(--orbit-dur) / 2) cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
++  animation-delay: calc(var(--orbit-dur) * (var(--p) * -1 - 0.75));
+ }
+ .landing-orbit-icon {
+   position: absolute;
+-  left: -24px;
+-  top: -24px;
+-  width: 48px;
+-  height: 48px;
++  left: -26px;
++  top: -26px;
++  width: 52px;
++  height: 52px;
+   display: grid;
+   place-items: center;
+   border-radius: 50%;
+   background: rgba(8, 16, 44, 0.7);
+   border: 1px solid currentColor;
+-  transform: rotate(calc(var(--a) * -1));
+   filter: drop-shadow(0 0 6px currentColor) drop-shadow(0 0 14px currentColor);
+-  animation: landing-counter var(--orbit-dur) linear infinite var(--orbit-dir);
++  animation: landing-pop 0.7s cubic-bezier(0.3, 1.5, 0.5, 1) calc(0.3s + var(--i) * 0.18s) backwards;
+ }
+ .landing-orbit-icon svg {
+   filter: drop-shadow(0 0 3px currentColor);
+ }
+ 
+-/* Book */
+-.landing-book {
+-  position: relative;
+-  width: 190px;
+-  height: 130px;
+-  perspective: 900px;
+-  transform: rotateX(18deg);
+-  transform-style: preserve-3d;
+-}
+-.landing-book-cover {
+-  position: absolute;
+-  inset: -8px -8px -12px;
+-  border-radius: 8px;
+-  background: linear-gradient(135deg, #7a2d1a, #4a1a0e);
+-  box-shadow: 0 18px 30px rgba(0, 0, 0, 0.45);
+-}
+-.landing-book-page {
+-  position: absolute;
+-  top: 0;
+-  bottom: 0;
+-  width: 50%;
+-  background: #f7f1e1;
+-  background-image: repeating-linear-gradient(
+-    transparent 0 11px,
+-    rgba(60, 70, 110, 0.16) 11px 12px
+-  );
+-}
+-.landing-book-left {
+-  left: 0;
+-  border-radius: 4px 0 0 4px;
+-  box-shadow: inset -10px 0 14px -8px rgba(0, 0, 0, 0.3);
+-}
+-.landing-book-right {
+-  right: 0;
+-  border-radius: 0 4px 4px 0;
+-  box-shadow: inset 10px 0 14px -8px rgba(0, 0, 0, 0.3);
+-}
+-.landing-book-spine {
+-  position: absolute;
+-  left: calc(50% - 1px);
+-  top: -2px;
+-  bottom: -2px;
+-  width: 2px;
+-  background: rgba(0, 0, 0, 0.45);
+-}
+-.landing-book-flip {
+-  position: absolute;
+-  top: 0;
+-  bottom: 0;
+-  left: 50%;
+-  width: 50%;
+-  transform-origin: left center;
+-  transform: rotateY(-180deg);
+-  z-index: calc(var(--i) + 1);
+-  background: #fbf6e8;
+-  background-image: repeating-linear-gradient(
+-    transparent 0 11px,
+-    rgba(60, 70, 110, 0.16) 11px 12px
+-  );
+-  border-radius: 0 4px 4px 0;
+-  box-shadow: 0 0 6px rgba(0, 0, 0, 0.2);
+-  /* fast at first, slower and slower: both the wait and the flip itself grow with --i */
+-  animation: landing-flip calc(0.3s + var(--i) * 0.1s) ease-in-out
+-    calc(1.2s + var(--i) * var(--i) * 0.07s) backwards;
+-}
+-
+-/* Laptop */
+-.landing-laptop {
+-  width: 210px;
+-}
+-.landing-laptop-lid {
+-  padding: 8px;
+-  border-radius: 10px 10px 0 0;
+-  background: #1b2347;
+-  border: 1px solid rgba(255, 255, 255, 0.12);
+-}
+-.landing-laptop-screen {
+-  position: relative;
+-  height: 128px;
+-  border-radius: 4px;
+-  overflow: hidden;
+-  background: #050a1c;
+-  box-shadow: inset 0 0 18px rgba(0, 255, 150, 0.12);
+-}
+-.landing-laptop-base {
+-  height: 10px;
+-  margin-inline: -14px;
+-  border-radius: 0 0 14px 14px;
+-  background: linear-gradient(#aeb5cc, #6f7799);
+-  box-shadow: 0 14px 24px rgba(0, 0, 0, 0.45);
+-}
+-.landing-code {
+-  position: absolute;
+-  inset: 0;
+-  padding: 8px;
+-  opacity: 0;
+-  animation: landing-code-life 4.6s linear 1.7s backwards;
+-}
+-.landing-code-track {
+-  font:
+-    10px/16px ui-monospace,
+-    "SF Mono",
+-    Menlo,
+-    monospace;
+-  color: #4dff9d;
+-  text-shadow: 0 0 6px rgba(77, 255, 157, 0.6);
+-  white-space: nowrap;
+-  animation: landing-code-scroll 0.7s linear 1.7s 6;
+-}
+-.landing-smiley {
+-  position: absolute;
+-  inset: 0;
+-  display: grid;
+-  place-items: center;
+-  color: #4dff9d;
+-  filter: drop-shadow(0 0 8px rgba(77, 255, 157, 0.7));
+-  animation: landing-pop 0.7s cubic-bezier(0.3, 1.6, 0.5, 1) 6.2s backwards;
+-}
+-
+ /* Welcome text */
+ .landing-welcome {
++  position: relative;
++  z-index: 1;
+   text-align: center;
+   padding: 0 8px;
+ }
+@@ -5386,49 +5264,20 @@ input[type="number"]:focus {
+ }
+ 
+ /* Keyframes (start states only) */
+-@keyframes landing-rise {
+-  from {
+-    opacity: 0;
+-    transform: translateY(160px);
+-  }
+-}
+-@keyframes landing-flip {
++@keyframes landing-orbit-x {
+   from {
+-    transform: rotateY(0deg);
+-    z-index: calc(20 - var(--i));
++    translate: var(--rx) 0;
+   }
+-  50% {
+-    z-index: calc(20 - var(--i));
+-  }
+-  51% {
+-    z-index: calc(var(--i) + 1);
+-  }
+-}
+-@keyframes landing-spin {
+   to {
+-    transform: rotate(360deg);
++    translate: calc(var(--rx) * -1) 0;
+   }
+ }
+-@keyframes landing-counter {
+-  to {
+-    rotate: -360deg;
++@keyframes landing-orbit-y {
++  from {
++    translate: 0 var(--ry);
+   }
+-}
+-@keyframes landing-code-scroll {
+   to {
+-    transform: translateY(-50%);
+-  }
+-}
+-@keyframes landing-code-life {
+-  0% {
+-    opacity: 0;
+-  }
+-  6%,
+-  86% {
+-    opacity: 1;
+-  }
+-  100% {
+-    opacity: 0;
++    translate: 0 calc(var(--ry) * -1);
+   }
+ }
+ @keyframes landing-pop {
+@@ -5511,49 +5360,27 @@ input[type="number"]:focus {
+   .landing-login {
+     margin-left: auto;
+   }
+-  .landing-stage {
+-    grid-template-columns: 1fr 1fr;
+-    grid-template-areas: "book laptop" "welcome welcome";
+-    gap: 24px 0;
+-  }
+-  .landing-scene-book {
+-    grid-area: book;
+-  }
+-  .landing-scene-laptop {
+-    grid-area: laptop;
+-  }
+-  .landing-welcome {
+-    grid-area: welcome;
+-  }
+-  .landing-scene {
+-    --orbit-r: 112px;
+-    width: min(100%, 260px);
+-  }
+-  .landing-book {
+-    transform: rotateX(18deg) scale(0.82);
+-  }
+-  .landing-laptop {
+-    transform: scale(0.82);
+-  }
+ }
+-@media (max-width: 480px) {
+-  .landing-scene {
+-    --orbit-r: 78px;
+-    width: min(100%, 180px);
++@media (max-width: 560px) {
++  .landing-stage {
++    --rx: calc(50vw - 40px);
++    --ry: 290px;
+   }
+   .landing-orbit-icon {
+-    transform-origin: center;
+-    scale: 0.72;
++    left: -20px;
++    top: -20px;
++    width: 40px;
++    height: 40px;
++    scale: 0.8;
+   }
+-  .landing-book {
+-    transform: rotateX(18deg) scale(0.58);
++  .landing-welcome {
++    padding: 0 22px;
+   }
+-  .landing-laptop {
+-    transform: scale(0.58);
++  .landing-welcome p {
++    max-width: 30ch;
+   }
+ }
+ 
+-
+ /* Role dashboards share the student dashboard's visual language and column order. */
+ .staff-dash {
+   display: flex;
+diff --git a/frontend/src/components/landing/BookScene.tsx b/frontend/src/components/landing/BookScene.tsx
+deleted file mode 100644
+index 66071e6..0000000
+--- a/frontend/src/components/landing/BookScene.tsx
++++ /dev/null
+@@ -1,34 +0,0 @@
+-import type { CSSProperties } from 'react';
+-import { DetectiveGlassesIcon, MusicNoteIcon, SneakerIcon } from './NeonIcons';
+-import { Orbit } from './Orbit';
+-
+-/** Pages that flip, fast at first and then slower (timing lives in CSS via --i). */
+-const FLIP_PAGES = 8;
+-
+-const CLUB_ORBIT = [
+-  { icon: <SneakerIcon size={30} />, angle: 0, color: '#ff4d5e' },
+-  { icon: <MusicNoteIcon size={30} />, angle: 120, color: '#ffc83d' },
+-  { icon: <DetectiveGlassesIcon size={30} />, angle: 240, color: '#b583ff' },
+-];
+-
+-/** The open book (left of the hero) with the Student Managed Clubs icons revolving round it. */
+-export function BookScene() {
+-  return (
+-    <div className="landing-scene landing-scene-book">
+-      <Orbit items={CLUB_ORBIT} duration={14} />
+-      <div className="landing-rise">
+-        <div className="landing-book" role="img" aria-label="An open book with its pages turning">
+-          <div className="landing-book-cover" />
+-          <div className="landing-book-page landing-book-left" />
+-          <div className="landing-book-page landing-book-right" />
+-          {Array.from({ length: FLIP_PAGES }, (_, i) => (
+-            <div key={i} className="landing-book-flip" style={{ '--i': i } as CSSProperties}>
+-              <span />
+-            </div>
+-          ))}
+-          <div className="landing-book-spine" />
+-        </div>
+-      </div>
+-    </div>
+-  );
+-}
+diff --git a/frontend/src/components/landing/LandingHero.tsx b/frontend/src/components/landing/LandingHero.tsx
+index cec7e90..92c448c 100644
+--- a/frontend/src/components/landing/LandingHero.tsx
++++ b/frontend/src/components/landing/LandingHero.tsx
+@@ -1,6 +1,5 @@
+ import { Link } from 'react-router-dom';
+-import { BookScene } from './BookScene';
+-import { LaptopScene } from './LaptopScene';
++import { WelcomeOrbit } from './WelcomeOrbit';
+ 
+ interface LandingHeroProps {
+   signedIn: boolean;
+@@ -11,7 +10,7 @@ export function LandingHero({ signedIn }: LandingHeroProps) {
+     <section className="landing-hero" id="top">
+       <div className="landing-stars" aria-hidden="true" />
+       <div className="landing-stage">
+-        <BookScene />
++        <WelcomeOrbit />
+         <div className="landing-welcome">
+           <h1>
+             Welcome to the <span>CNP Department</span>
+@@ -26,7 +25,6 @@ export function LandingHero({ signedIn }: LandingHeroProps) {
+             </svg>
+           </Link>
+         </div>
+-        <LaptopScene />
+       </div>
+       <a className="landing-scroll" href="#about" aria-label="Scroll to learn more">
+         <span />
+diff --git a/frontend/src/components/landing/LaptopScene.tsx b/frontend/src/components/landing/LaptopScene.tsx
+deleted file mode 100644
+index a5c4e06..0000000
+--- a/frontend/src/components/landing/LaptopScene.tsx
++++ /dev/null
+@@ -1,54 +0,0 @@
+-import { GearIcon, ScrewdriverIcon, SpannerIcon } from '../icons/ToolIcons';
+-import { Orbit } from './Orbit';
+-
+-const CODE_LINES = [
+-  'const club = await smc.join();',
+-  'git commit -m "ship it"',
+-  'npm run build --prod',
+-  'if (idea) prototype(idea);',
+-  'deploy(project, "GUIITAR");',
+-  'while (learning) grow();',
+-  'import { future } from "gu";',
+-  'SELECT * FROM innovators;',
+-  'sudo make impact',
+-  'await team.collaborate();',
+-];
+-
+-const PROJECT_ORBIT = [
+-  { icon: <GearIcon size={30} />, angle: 0, color: '#aeb8cc' },
+-  { icon: <SpannerIcon size={30} />, angle: 120, color: '#ffffff' },
+-  { icon: <ScrewdriverIcon size={30} />, angle: 240, color: '#46e08c' },
+-];
+-
+-/** The laptop (right of the hero): code scrolls like a terminal, then settles on a smiley. */
+-export function LaptopScene() {
+-  return (
+-    <div className="landing-scene landing-scene-laptop">
+-      <Orbit items={PROJECT_ORBIT} duration={16} reverse />
+-      <div className="landing-rise landing-rise-late">
+-        <div className="landing-laptop" role="img" aria-label="A laptop running code that settles into a smiley face">
+-          <div className="landing-laptop-lid">
+-            <div className="landing-laptop-screen">
+-              <div className="landing-code">
+-                <div className="landing-code-track">
+-                  {[...CODE_LINES, ...CODE_LINES].map((line, i) => (
+-                    <div key={i}>{line}</div>
+-                  ))}
+-                </div>
+-              </div>
+-              <div className="landing-smiley" aria-hidden="true">
+-                <svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round">
+-                  <circle cx="32" cy="32" r="26" />
+-                  <circle cx="23" cy="26" r="1.5" fill="currentColor" />
+-                  <circle cx="41" cy="26" r="1.5" fill="currentColor" />
+-                  <path d="M20 38c3 6 8 9 12 9s9-3 12-9" />
+-                </svg>
+-              </div>
+-            </div>
+-          </div>
+-          <div className="landing-laptop-base" />
+-        </div>
+-      </div>
+-    </div>
+-  );
+-}
+diff --git a/frontend/src/components/landing/NeonIcons.tsx b/frontend/src/components/landing/NeonIcons.tsx
+index a45e4a5..ff75323 100644
+--- a/frontend/src/components/landing/NeonIcons.tsx
++++ b/frontend/src/components/landing/NeonIcons.tsx
+@@ -47,3 +47,22 @@ export const DetectiveGlassesIcon: FC<NeonIconProps> = ({ size = 32, color = 'cu
+     <path d="M5.4 12.6a2.4 2.4 0 0 1 1.6-.9M15.4 12.6a2.4 2.4 0 0 1 1.6-.9" />
+   </svg>
+ );
++
++/** Open book. */
++export const BookIcon: FC<NeonIconProps> = ({ size = 32, color = 'currentColor' }) => (
++  <svg width={size} height={size} stroke={color} {...common}>
++    <path d="M12 6.5C10.2 5 7.6 4.3 3.5 4.5v13c4.1-.2 6.7.5 8.5 2 1.8-1.5 4.4-2.2 8.5-2v-13c-4.1-.2-6.7.5-8.5 2Z" />
++    <path d="M12 6.5V19.5" />
++    <path d="M6 8.5c1.2 0 2.2.2 3.2.6M6 11.5c1.2 0 2.2.2 3.2.6M18 8.5c-1.2 0-2.2.2-3.2.6M18 11.5c-1.2 0-2.2.2-3.2.6" />
++  </svg>
++);
++
++/** Laptop with a smiley on screen. */
++export const LaptopIcon: FC<NeonIconProps> = ({ size = 32, color = 'currentColor' }) => (
++  <svg width={size} height={size} stroke={color} {...common}>
++    <rect x="4.5" y="5" width="15" height="10.5" rx="1.6" />
++    <path d="M2.5 19h19" />
++    <path d="M9.4 11.4c.7 1 1.6 1.4 2.6 1.4s1.9-.4 2.6-1.4" />
++    <path d="M9.6 8.6h.01M14.4 8.6h.01" />
++  </svg>
++);
+diff --git a/frontend/src/components/landing/Orbit.tsx b/frontend/src/components/landing/Orbit.tsx
+deleted file mode 100644
+index eed1c7a..0000000
+--- a/frontend/src/components/landing/Orbit.tsx
++++ /dev/null
+@@ -1,44 +0,0 @@
+-import type { CSSProperties, ReactNode } from 'react';
+-
+-export interface OrbitItem {
+-  icon: ReactNode;
+-  /** Starting angle on the ring, in degrees. */
+-  angle: number;
+-  /** Neon colour of the icon (also drives its glow). */
+-  color: string;
+-}
+-
+-interface OrbitProps {
+-  items: OrbitItem[];
+-  /** Seconds for one revolution. */
+-  duration: number;
+-  /** Spin the other way round, so the two orbits feel independent. */
+-  reverse?: boolean;
+-}
+-
+-/**
+- * Icons revolving around the centre of their scene.
+- * The ring spins; each icon counter-rotates so it stays upright. All CSS, no JS per frame.
+- * Radius comes from the scene size via CSS (`--orbit-r`).
+- */
+-export function Orbit({ items, duration, reverse = false }: OrbitProps) {
+-  const style = {
+-    '--orbit-dur': `${duration}s`,
+-    '--orbit-dir': reverse ? 'reverse' : 'normal',
+-  } as CSSProperties;
+-
+-  return (
+-    <div className="landing-orbit" style={style} aria-hidden="true">
+-      <div className="landing-orbit-ring" />
+-      <div className="landing-orbit-spin">
+-        {items.map((item, i) => (
+-          <div key={i} className="landing-orbit-item" style={{ '--a': `${item.angle}deg` } as CSSProperties}>
+-            <div className="landing-orbit-icon" style={{ color: item.color }}>
+-              {item.icon}
+-            </div>
+-          </div>
+-        ))}
+-      </div>
+-    </div>
+-  );
+-}
+diff --git a/frontend/src/components/landing/WelcomeOrbit.tsx b/frontend/src/components/landing/WelcomeOrbit.tsx
+new file mode 100644
+index 0000000..3b179cd
+--- /dev/null
++++ b/frontend/src/components/landing/WelcomeOrbit.tsx
+@@ -0,0 +1,46 @@
++import type { CSSProperties, ReactNode } from 'react';
++import { GearIcon, ScrewdriverIcon, SpannerIcon } from '../icons/ToolIcons';
++import { BookIcon, DetectiveGlassesIcon, LaptopIcon, MusicNoteIcon, SneakerIcon } from './NeonIcons';
++
++interface OrbitIcon {
++  icon: ReactNode;
++  /** Neon colour of the icon (also drives its glow). */
++  color: string;
++}
++
++/**
++ * Student Managed Clubs first (book, then what clubs do), then GUIITAR Projects
++ * (laptop, then the tools), spread evenly round one ring.
++ */
++const ICONS: OrbitIcon[] = [
++  { icon: <BookIcon size={28} />, color: '#62b4ff' },
++  { icon: <SneakerIcon size={28} />, color: '#ff4d5e' },
++  { icon: <MusicNoteIcon size={28} />, color: '#ffc83d' },
++  { icon: <DetectiveGlassesIcon size={28} />, color: '#b583ff' },
++  { icon: <LaptopIcon size={28} />, color: '#38d9e8' },
++  { icon: <GearIcon size={28} />, color: '#aeb8cc' },
++  { icon: <SpannerIcon size={28} />, color: '#ffffff' },
++  { icon: <ScrewdriverIcon size={28} />, color: '#46e08c' },
++];
++
++/**
++ * Icons circling the welcome text on an ellipse. Pure CSS: each icon is moved by two
++ * nested animations (x and y) a quarter-turn apart, which traces an ellipse and keeps
++ * the icon upright. Radii come from --rx / --ry on the stage so they can change per screen.
++ */
++export function WelcomeOrbit() {
++  return (
++    <div className="landing-orbit" aria-hidden="true">
++      <div className="landing-orbit-ring" />
++      {ICONS.map((item, i) => (
++        <div key={i} className="landing-orbit-x" style={{ '--p': i / ICONS.length, '--i': i } as CSSProperties}>
++          <div className="landing-orbit-y">
++            <div className="landing-orbit-icon" style={{ color: item.color }}>
++              {item.icon}
++            </div>
++          </div>
++        </div>
++      ))}
++    </div>
++  );
++}

@@ -5,9 +5,9 @@ import ProjectMentor from '../models/ProjectMentor.js';
 import JoinRequest from '../models/JoinRequest.js';
 import User from '../models/User.js';
 import { requireAuth } from '../middleware/requireAuth.js';
-import { requireRole } from '../middleware/requireRole.js';
-import { uploadImages, getBase64DataURI, handleUploadError } from '../middleware/upload.js';
-import { uploadImage, deleteAsset } from '../services/cloudinaryService.js';
+import { requireRole, requireAnyRole } from '../middleware/requireRole.js';
+import { uploadImages, handleUploadError } from '../middleware/upload.js';
+import { replaceEntityImage } from '../services/cloudinaryService.js';
 import {
   boundedString,
   escapeRegex,
@@ -119,21 +119,14 @@ router.post(
         return res.status(404).json({ success: false, message: 'Project not found' });
       }
 
-      const fileUri = getBase64DataURI(req.file);
-      const result = await uploadImage(fileUri, { folder: 'cnp/projects' });
-
-      // Clean up old image
-      if (project.imagePublicId) {
-        try {
-          await deleteAsset(project.imagePublicId, 'image');
-        } catch (err) {
-          console.error(`Failed to delete old project image ${project.imagePublicId}:`, err.message);
-        }
-      }
-
-      project.image = result.secure_url;
-      project.imagePublicId = result.public_id;
-      await project.save();
+      await replaceEntityImage({
+        document: project,
+        file: req.file,
+        folder: 'cnp/projects',
+        urlField: 'image',
+        publicIdField: 'imagePublicId',
+        logLabel: 'project image',
+      });
 
       res.status(200).json({
         success: true,

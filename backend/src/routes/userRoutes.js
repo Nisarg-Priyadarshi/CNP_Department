@@ -20,8 +20,8 @@ import express from 'express';
 import User from '../models/User.js';
 import ProjectMembership from '../models/ProjectMembership.js';
 import { requireAuth } from '../middleware/requireAuth.js';
-import { uploadImages, getBase64DataURI, handleUploadError } from '../middleware/upload.js';
-import { uploadImage, deleteAsset } from '../services/cloudinaryService.js';
+import { uploadImages, handleUploadError } from '../middleware/upload.js';
+import { replaceEntityImage } from '../services/cloudinaryService.js';
 import { isValidObjectId, sendError } from '../lib/http.js';
 
 const router = express.Router();
@@ -172,28 +172,14 @@ router.post(
         return res.status(404).json({ success: false, message: 'User not found' });
       }
 
-      // Convert buffer to data URI
-      const fileUri = getBase64DataURI(req.file);
-
-      // Upload to Cloudinary
-      const result = await uploadImage(fileUri, {
+      await replaceEntityImage({
+        document: user,
+        file: req.file,
         folder: 'cnp/users',
+        urlField: 'profileImage',
+        publicIdField: 'profileImagePublicId',
+        logLabel: `profile image for user ${userId}`,
       });
-
-      // Cleanup old image if it exists
-      if (user.profileImagePublicId) {
-        try {
-          await deleteAsset(user.profileImagePublicId, 'image');
-        } catch (err) {
-          console.error(`Failed to delete old profile image for user ${userId}:`, err.message);
-          // Don't fail the request, just log it
-        }
-      }
-
-      // Update User document
-      user.profileImage = result.secure_url;
-      user.profileImagePublicId = result.public_id;
-      await user.save();
 
       res.status(200).json({
         success: true,

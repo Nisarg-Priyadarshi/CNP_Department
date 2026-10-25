@@ -197,8 +197,8 @@ export function startEventReminderScheduler() {
     console.error('[EventReminderService] Startup check error:', err.message);
   });
 
-  // 2. Schedule recurring cron (every minute)
-  cronTask = cron.schedule('* * * * *', async () => {
+  // 2. Schedule recurring cron (every 5 minutes)
+  cronTask = cron.schedule('*/5 * * * *', async () => {
     try {
       await checkAndSendEventReminders();
     } catch (err) {
