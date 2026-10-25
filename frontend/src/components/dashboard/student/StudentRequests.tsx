@@ -1,5 +1,8 @@
-import { useNavigate } from 'react-router-dom';
-import { DashboardSection } from './DashboardSection';
+import { Link } from 'react-router-dom';
+import { KindGlyph } from '../../ui/vis';
+import { Tooltip } from '../../ui/Tooltip';
+import { CheckIcon } from './StudentIcons';
+import { relativeTime, requestStatus, requestTarget, type RequestStatus } from './studentUtils';
 import type { StudentJoinRequest } from '../../../types/studentDashboard';
 
 interface StudentRequestsProps {
@@ -7,78 +10,79 @@ interface StudentRequestsProps {
   error?: string;
 }
 
-function requestTargetName(req: StudentJoinRequest): string {
-  if (req.clubId && typeof req.clubId === 'object' && req.clubId.name) return req.clubId.name;
-  if (req.projectId && typeof req.projectId === 'object' && req.projectId.name) return req.projectId.name;
-  return 'Unknown';
+function toneOf(status: RequestStatus['tone']): string {
+  return status === 'plain' ? 'plain' : status;
 }
 
-function requestKind(req: StudentJoinRequest): 'Club' | 'Project' {
-  return req.clubId ? 'Club' : 'Project';
-}
-
-function statusClass(status: string): string {
-  if (status === 'pending') return 'student-dash-status student-dash-status--pending';
-  if (status === 'approved') return 'student-dash-status student-dash-status--approved';
-  if (status === 'rejected') return 'student-dash-status student-dash-status--rejected';
-  return 'student-dash-status';
-}
-
+/**
+ * Join requests as queue marks: one mark per request, toned by its state, each
+ * linking to the club or project it concerns. Pending is the only loud state and
+ * the oldest pending age lives in the tooltip.
+ */
 export function StudentRequests({ requests, error }: StudentRequestsProps) {
-  const navigate = useNavigate();
-  const pending = requests.filter((r) => r.status === 'pending');
-  const recent = requests.filter((r) => r.status !== 'pending').slice(0, 3);
-  const display = [...pending, ...recent].slice(0, 5);
+  const pending = requests.filter((request) => request.status === 'pending');
+  const oldestPending = pending.reduce<string | undefined>((oldest, request) => {
+    if (!request.createdAt) return oldest;
+    if (!oldest) return request.createdAt;
+    return new Date(request.createdAt) < new Date(oldest) ? request.createdAt : oldest;
+  }, undefined);
+  const oldest = relativeTime(oldestPending);
 
   return (
-    <DashboardSection
-      id="student-requests"
-      eyebrow="Applications"
-      title="Join requests"
-      count={pending.length > 0 ? pending.length : undefined}
-    >
-      {error ? (
-        <div className="student-dash-inline-error" role="alert">
-          {error}
-        </div>
-      ) : display.length === 0 ? (
-        !error && (
-          <p className="student-dash-aside-empty">
-            No join requests on file. Apply from a club or project page when you find a fit.
-          </p>
-        )
-      ) : (
-        <ul className="student-dash-request-list">
-          {display.map((req) => {
-            const kind = requestKind(req);
-            const targetId =
-              kind === 'Club'
-                ? typeof req.clubId === 'object'
-                  ? req.clubId?._id
-                  : req.clubId
-                : typeof req.projectId === 'object'
-                  ? req.projectId?._id
-                  : req.projectId;
+    <div className="sd-signal__row">
+      <span className="sd-signal__glyph" aria-hidden="true">
+        <KindGlyph kind="request" size={16} />
+      </span>
+      <span className="sd-signal__label">Requests</span>
 
-            return (
-              <li key={req._id}>
-                <button
-                  type="button"
-                  className="student-dash-request-row"
-                  onClick={() => {
-                    if (targetId) navigate(kind === 'Club' ? `/clubs/${targetId}` : `/projects/${targetId}`);
-                  }}
-                  disabled={!targetId}
-                >
-                  <span className="student-dash-request-kind">{kind}</span>
-                  <span className="student-dash-request-name">{requestTargetName(req)}</span>
-                  <span className={statusClass(req.status)}>{req.status}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </DashboardSection>
+      <span className="sd-signal__marks">
+        {!error
+          ? requests.slice(0, 6).map((request) => {
+              const target = requestTarget(request);
+              const status = requestStatus(request.status);
+              const label = `${target.kind} ${target.name}, ${status.label}`;
+              const mark = <span className="sd-signal__mark" data-tone={toneOf(status.tone)} />;
+
+              if (!target.id) {
+                return (
+                  <span className="sd-signal__mark-wrap" key={request._id} role="img" aria-label={label}>
+                    {mark}
+                  </span>
+                );
+              }
+              return (
+                <Tooltip key={request._id} label={`${target.kind} · ${target.name} · ${status.label}`}>
+                  <Link
+                    className="sd-signal__mark-wrap"
+                    to={target.kind === 'Club' ? `/clubs/${target.id}` : `/projects/${target.id}`}
+                    aria-label={label}
+                  >
+                    {mark}
+                  </Link>
+                </Tooltip>
+              );
+            })
+          : null}
+        {!error && requests.length > 6 ? (
+          <span className="sd-signal__more">+{requests.length - 6}</span>
+        ) : null}
+      </span>
+
+      <span className="sd-signal__num" aria-hidden="true">
+        {error ? (
+          <span className="sd-signal__unit">unavailable</span>
+        ) : pending.length > 0 ? (
+          <>
+            <span className="sd-signal__n">{pending.length}</span>
+            <span className="sd-signal__unit">waiting{oldest ? ` · ${oldest}` : ''}</span>
+          </>
+        ) : (
+          <>
+            <CheckIcon className="sd-signal__check" />
+            <span className="sd-signal__unit">{requests.length > 0 ? 'clear' : 'none'}</span>
+          </>
+        )}
+      </span>
+    </div>
   );
 }

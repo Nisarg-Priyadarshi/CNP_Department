@@ -1,0 +1,1280 @@
+/* Hallmark · shape: app shell · genre: modern-minimal · theme: Cobalt
+ * surfaces: graphite rail, paper frame, one cobalt signal · signature: the four-tick
+ * hairline loader · posture: restrained · motion: transitions only · v1
+ * ═══════════════════════════════════════════════════════════════════════════
+   The signed-in shell · Cobalt
+   Graphite rail, paper header, one scrollable content column. Pages sit in
+   `.shell-content` and add nothing around themselves; this file owns the frame,
+   its rail, the header's popovers and the route-transition loader.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.shell {
+  --shell-pad: 32px;
+  display: flex;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--color-paper);
+}
+
+/* The frame sits outside `.shell-content`, so it carries its own resets. The
+   chrome draws every control itself; the UA button frame is not part of it. */
+.shell-rail a,
+.shell-header a { text-decoration: none; }
+
+.shell-rail button,
+.shell-header button {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.shell-rail button:disabled,
+.shell-header button:disabled { cursor: not-allowed; }
+
+/* ── Rail ────────────────────────────────────────────────────────────────── */
+
+.shell-rail {
+  position: relative;
+  z-index: var(--z-sticky);
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: var(--shell-w);
+  min-height: 0;
+  background: var(--color-graphite);
+  color: var(--color-graphite-ink);
+  border-right: var(--rule-hair) solid var(--color-graphite-2);
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* The wordmark: cobalt cut-corner mark, name, and the university line below it. */
+.rail-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: var(--head-h);
+  padding-inline: var(--space-md);
+  border-bottom: var(--rule-hair) solid var(--color-graphite-2);
+}
+
+.rail-brand {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+  min-height: var(--space-xl);
+  border-radius: var(--radius-input);
+}
+
+.rail-brand__text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.rail-brand__name {
+  font: 600 var(--text-md)/1.15 var(--font-display);
+  letter-spacing: -0.02em;
+  color: var(--color-graphite-ink);
+  white-space: nowrap;
+}
+
+.rail-brand__place {
+  font: 500 var(--text-xs)/1.2 var(--font-body);
+  color: var(--color-graphite-muted);
+  white-space: nowrap;
+}
+
+.rail-brand:focus-visible,
+.rail-signout:focus-visible,
+.rail-theme:focus-visible,
+.rail-close:focus-visible {
+  outline: 2px solid var(--color-accent-2);
+  outline-offset: 2px;
+}
+
+/* Full-bleed rows keep their ring inside the rail so nothing is clipped. */
+.rail-link:focus-visible {
+  outline: 2px solid var(--color-accent-2);
+  outline-offset: -2px;
+}
+
+.rail-close {
+  display: none;
+  background: transparent;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: var(--rule-hair) solid transparent;
+  border-radius: var(--radius-input);
+  color: var(--color-graphite-muted);
+  transition: color var(--dur-short) var(--ease-in-out), background-color var(--dur-short) var(--ease-in-out);
+}
+.rail-close:hover { color: var(--color-graphite-ink); background: var(--color-graphite-2); }
+.rail-close svg { width: 18px; height: 18px; }
+
+/* ── Rail navigation ─────────────────────────────────────────────────────── */
+
+.rail-nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-block: var(--space-xs) var(--space-lg);
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-graphite-2) transparent;
+}
+
+.rail-group { position: relative; }
+
+.rail-group + .rail-group {
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+}
+
+/* Inset rule: it starts where the labels and icons start, not at the rail edge. */
+.rail-group + .rail-group::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--space-md);
+  right: var(--space-md);
+  height: var(--rule-hair);
+  background: var(--color-graphite-2);
+}
+
+/* Section labels are the rail's quiet meta layer. They carry the full
+   graphite-muted ink (≈6.9:1 on the graphite rail) so they are readable, and
+   earn their lower rank from size and face instead of opacity — a dimmed 12px
+   label was the least legible thing in the frame. */
+.rail-group__label {
+  padding: var(--space-sm) var(--space-md) var(--space-2xs);
+  font: 600 var(--text-xs)/1.3 var(--font-body);
+  letter-spacing: normal;
+  color: var(--color-graphite-muted);
+}
+
+.rail-list { display: grid; gap: var(--space-3xs); }
+
+.rail-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: 38px;
+  padding: 0 var(--space-md);
+  font: 500 var(--text-sm)/1.2 var(--font-display);
+  letter-spacing: -0.005em;
+  color: var(--color-graphite-muted);
+  transition: color var(--dur-short) var(--ease-in-out), background-color var(--dur-short) var(--ease-in-out);
+}
+
+.rail-link::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-accent-2);
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform var(--dur-short) var(--ease-out);
+}
+
+.rail-link:hover {
+  color: var(--color-graphite-ink);
+  background: color-mix(in oklab, var(--color-accent) 10%, transparent);
+}
+
+/* Active is one state: a cobalt wash, a lit leading edge, cobalt ink on the
+   glyph and the brightest text in the rail. Nothing here is decorative. */
+.rail-link.is-active {
+  color: var(--color-graphite-ink);
+  background: color-mix(in oklab, var(--color-accent) 26%, transparent);
+}
+
+.rail-link.is-active:hover {
+  background: color-mix(in oklab, var(--color-accent) 30%, transparent);
+}
+
+.rail-link:active {
+  background: color-mix(in oklab, var(--color-accent) 34%, transparent);
+}
+
+.rail-link.is-active::before { transform: scaleY(1); }
+
+.rail-link__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A 18px optical square with the drawing centred inside it: every glyph sits on
+   the same axis whether it is a wide building or a tall bell. */
+.rail-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  overflow: visible;
+  color: currentColor;
+  transition: color var(--dur-short) var(--ease-in-out);
+}
+.rail-link.is-active .rail-icon { color: var(--color-accent-2); }
+
+/* ── Rail footer: who you are, and the way out ───────────────────────────── */
+
+.rail-foot {
+  flex: none;
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md) var(--space-md);
+  border-top: var(--rule-hair) solid var(--color-graphite-2);
+}
+
+.rail-user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.rail-avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  overflow: hidden;
+  border-radius: var(--radius-input);
+  background: color-mix(in oklab, var(--color-accent) 34%, var(--color-graphite-2));
+  color: var(--color-graphite-ink);
+  font: 600 var(--text-sm)/1 var(--font-display);
+}
+.rail-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.rail-user__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.rail-user__name {
+  font: 500 var(--text-sm)/1.25 var(--font-display);
+  color: var(--color-graphite-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-role {
+  justify-self: start;
+  padding: 0 var(--space-2xs);
+  border: var(--rule-hair) solid var(--color-graphite-2);
+  border-radius: 4px;
+  font: 500 var(--text-xs)/1.5 var(--font-body);
+  color: var(--color-graphite-muted);
+  white-space: nowrap;
+}
+
+/* Sign out is a quiet action, not a destination: no icon gutter of its own, no
+   active bar, no nav weight. It sits on the same 16px axis as the icons above
+   and only gains a surface while the pointer or focus is on it. */
+.rail-signout {
+  display: flex;
+  background: transparent;
+  align-items: center;
+  gap: var(--space-xs);
+  width: auto;
+  min-height: 30px;
+  margin-inline: calc(var(--space-xs) * -1);
+  padding-inline: var(--space-xs);
+  border: 0;
+  border-radius: 4px;
+  font: 500 var(--text-xs)/1 var(--font-body);
+  color: var(--color-graphite-muted);
+  text-align: left;
+  transition: color var(--dur-short) var(--ease-in-out), background-color var(--dur-short) var(--ease-in-out), border-color var(--dur-short) var(--ease-in-out);
+}
+.rail-signout:hover {
+  color: var(--color-graphite-ink);
+  background: color-mix(in oklab, var(--color-graphite-ink) 9%, transparent);
+  border-color: transparent;
+}
+.rail-signout:active {
+  background: color-mix(in oklab, var(--color-graphite-ink) 15%, transparent);
+  color: var(--color-graphite-ink);
+}
+.rail-signout svg { width: 15px; height: 15px; flex: none; opacity: 0.9; }
+
+/* Appearance: a switch, not a link. Same quiet row weight as Sign out, with the
+   state carried by the knob as well as the word. */
+.rail-theme {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  width: 100%;
+  min-height: 30px;
+  margin-inline: calc(var(--space-xs) * -1);
+  padding-inline: var(--space-xs);
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  font: 500 var(--text-xs)/1 var(--font-body);
+  color: var(--color-graphite-muted);
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--dur-short) var(--ease-in-out), background-color var(--dur-short) var(--ease-in-out);
+}
+.rail-theme:hover {
+  color: var(--color-graphite-ink);
+  background: color-mix(in oklab, var(--color-graphite-ink) 9%, transparent);
+}
+.rail-theme:active {
+  background: color-mix(in oklab, var(--color-graphite-ink) 15%, transparent);
+  color: var(--color-graphite-ink);
+}
+
+.rail-theme__glyph {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.rail-theme__glyph svg { width: 15px; height: 15px; }
+
+.rail-theme__label { flex: 1; }
+
+.rail-theme__track {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  flex: none;
+  border: var(--rule-hair) solid var(--color-graphite-2);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--color-graphite-ink) 12%, transparent);
+  transition: background-color var(--dur-short) var(--ease-in-out), border-color var(--dur-short) var(--ease-in-out);
+}
+
+.rail-theme__knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-graphite-ink);
+  box-shadow: 0 1px 2px oklch(0% 0 0 / 0.45);
+  transition: transform var(--dur-short) var(--ease-in-out), background-color var(--dur-short) var(--ease-in-out);
+}
+
+.rail-theme[aria-checked="true"] .rail-theme__track {
+  background: var(--color-accent);
+  border-color: var(--color-accent-2);
+}
+.rail-theme[aria-checked="true"] .rail-theme__knob {
+  transform: translateX(13px);
+  background: var(--color-accent-ink);
+}
+
+/* ── Main column ─────────────────────────────────────────────────────────── */
+
+.shell-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--color-paper);
+}
+
+.shell-header {
+  position: relative;
+  z-index: var(--z-sticky);
+  flex: none;
+  min-height: var(--head-h);
+  background: var(--color-paper);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+/* The same column as `.shell-content`: identical max-width, centring and
+   gutter, so the route locator, the header controls and the page's h1 all
+   start and end on one grid at every width. */
+.shell-header__inner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: 100%;
+  max-width: var(--ui-max);
+  min-height: var(--head-h);
+  margin-inline: auto;
+  padding-inline: var(--shell-pad);
+}
+
+.shell-content {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: var(--ui-max);
+  margin-inline: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-lg) var(--shell-pad) calc(var(--space-lg) * 2);
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--color-rule-2) transparent;
+}
+
+/* ── Header: route identity ──────────────────────────────────────────────── */
+
+.hdr-lead {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.ui-icon-btn.hdr-menu-toggle { display: none; }
+
+.hdr-titles { min-width: 0; }
+
+/* Route identity on one line: parent, a hairline slash, then the page. */
+.hdr-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2xs);
+  min-width: 0;
+  /* A quiet locator, not a second headline: every route owns its h1 below. */
+  font: 500 var(--text-xs)/1.2 var(--font-body);
+  letter-spacing: 0;
+  color: var(--color-muted);
+}
+
+.hdr-title__current {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink-2);
+}
+
+.hdr-crumbs {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  white-space: nowrap;
+  font: 400 var(--text-xs)/1.2 var(--font-body);
+  color: var(--color-muted);
+}
+
+.hdr-crumbs ol { display: flex; align-items: center; list-style: none; }
+
+.hdr-crumbs::after {
+  content: "/";
+  margin-left: var(--space-xs);
+  color: var(--color-rule-2);
+}
+
+.hdr-crumbs a {
+  /* Without this the UA's own link colour wins, which turns the breadcrumb
+     browser-blue (and, under `color-scheme: dark`, lavender). */
+  color: var(--color-ink-2);
+  padding-block: 1px;
+  border-bottom: 1px solid transparent;
+  transition: color var(--dur-short) var(--ease-in-out), border-color var(--dur-short) var(--ease-in-out);
+}
+.hdr-crumbs a:hover { color: var(--color-ink); border-bottom-color: var(--color-rule-2); }
+
+/* ── Header: the right-hand cluster ──────────────────────────────────────── */
+
+.hdr-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.hdr-slot { position: relative; display: flex; }
+
+/* The command-palette trigger wears the app's field: 40px, hairline, sheet —
+   the quietest control that still reads as "you can type here", with the
+   modifier hint parked on the right edge. */
+.hdr-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  width: 216px;
+  min-height: 40px;
+  padding: 0 var(--space-2xs) 0 var(--space-sm);
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: var(--radius-input);
+  background: var(--color-sheet);
+  color: var(--color-muted);
+  font: 400 var(--text-sm)/1 var(--font-body);
+  text-align: left;
+  transition:
+    border-color var(--dur-short) var(--ease-in-out),
+    color var(--dur-short) var(--ease-in-out),
+    background-color var(--dur-short) var(--ease-in-out);
+}
+.hdr-search:hover { border-color: var(--color-muted); color: var(--color-ink-2); }
+.hdr-search:active { background: var(--color-paper-2); }
+.hdr-search[aria-expanded="true"] {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-wash);
+  color: var(--color-ink);
+}
+.hdr-search:focus-visible {
+  border-color: var(--color-accent);
+  color: var(--color-ink);
+}
+.hdr-search > svg { width: 15px; height: 15px; flex: none; }
+.hdr-search__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Aligned to the field's right edge, the way `.ui-kbd` sits inside a hint. */
+.hdr-search__kbd {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-3xs);
+  margin-left: auto;
+}
+
+/* The shortcuts trigger is a keycap, so it says what it opens without a label. */
+.ui-icon-btn.hdr-keys { color: var(--color-muted); }
+.ui-icon-btn.hdr-keys:hover { color: var(--color-ink); }
+.ui-icon-btn.hdr-keys[aria-expanded="true"] { color: var(--color-ink); background: var(--color-paper-2); }
+
+.hdr-keys__cap {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--color-paper-2);
+  color: var(--color-ink-2);
+  font: 600 0.6875rem/1 var(--font-body);
+}
+
+/* Header controls sit outside `.shell-content`, so they carry the ring. */
+.shell-header :is(button, a):focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.hdr-search:focus-visible { outline-offset: 3px; }
+
+.hdr-menu__kbd { margin-left: auto; }
+
+.ui-menu.hdr-jump {
+  position: absolute;
+  top: calc(100% + var(--space-xs));
+  right: 0;
+  z-index: var(--z-dropdown);
+  width: 320px;
+  padding: var(--space-xs);
+}
+
+.hdr-jump__field .ui-field { min-height: 34px; }
+
+.hdr-jump__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-2xs) var(--space-xs) var(--space-xs);
+  font: 500 var(--text-xs)/1.3 var(--font-body);
+  color: var(--color-muted);
+}
+
+.hdr-jump__hint { display: inline-flex; align-items: center; gap: var(--space-3xs); }
+
+.hdr-jump__more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  width: 100%;
+  margin-top: var(--space-2xs);
+  padding: var(--space-sm) var(--space-xs) var(--space-2xs);
+  border: 0;
+  border-top: var(--rule-hair) solid var(--color-rule);
+  background: transparent;
+  font: 500 var(--text-xs)/1.4 var(--font-body);
+  color: var(--color-accent-deep);
+  text-align: left;
+  white-space: nowrap;
+  transition: color var(--dur-short) var(--ease-in-out);
+}
+.hdr-jump__more:hover { color: var(--color-accent); }
+
+.hdr-jump__list {
+  display: grid;
+  gap: var(--space-3xs);
+  margin-top: var(--space-2xs);
+  max-height: min(46vh, 320px);
+  overflow-y: auto;
+}
+
+.ui-menu__item.hdr-jump__item { padding-block: var(--space-xs); }
+
+.hdr-jump__group {
+  flex: none;
+  font: 400 var(--text-xs)/1 var(--font-body);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.hdr-jump__empty {
+  padding: var(--space-sm) var(--space-xs);
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+
+.hdr-role { flex: none; }
+
+.hdr-bell { position: relative; }
+
+.hdr-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  display: grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding-inline: var(--space-2xs);
+  border-radius: 5px;
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  font: 600 var(--text-xs)/1 var(--font-body);
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 2px var(--color-paper);
+}
+
+.hdr-user {
+  display: flex;
+  background: transparent;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 38px;
+  padding: 0 var(--space-2xs);
+  border: var(--rule-hair) solid transparent;
+  border-radius: var(--radius-input);
+  transition: background-color var(--dur-short) var(--ease-in-out), border-color var(--dur-short) var(--ease-in-out);
+}
+.hdr-user:hover { background: var(--color-paper-2); border-color: var(--color-rule); }
+.hdr-user:active { background: var(--color-paper-3); }
+.hdr-user[aria-expanded="true"] { background: var(--color-paper-2); border-color: var(--color-rule-2); }
+
+.hdr-avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--color-accent-wash);
+  color: var(--color-accent-deep);
+  font: 600 var(--text-sm)/1 var(--font-display);
+  box-shadow: inset 0 0 0 1px var(--color-rule);
+}
+.hdr-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.hdr-user__name {
+  max-width: 132px;
+  font: 500 var(--text-sm)/1 var(--font-display);
+  color: var(--color-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hdr-user__chev {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--color-muted);
+  transition: transform var(--dur-short) var(--ease-out);
+}
+.hdr-user[aria-expanded="true"] .hdr-user__chev { transform: rotate(180deg); }
+
+/* ── Header: notification popover ────────────────────────────────────────── */
+
+.ui-menu.hdr-notif {
+  position: absolute;
+  top: calc(100% + var(--space-xs));
+  right: 0;
+  z-index: var(--z-dropdown);
+  width: 360px;
+  max-width: calc(100vw - var(--space-lg) * 2);
+  padding: 0;
+  overflow: hidden;
+}
+
+.hdr-notif__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.hdr-notif__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font: 600 var(--text-sm)/1.2 var(--font-display);
+  color: var(--color-ink);
+}
+
+.hdr-notif__markall {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: 500 var(--text-xs)/1.4 var(--font-body);
+  color: var(--color-accent-deep);
+  transition: color var(--dur-short) var(--ease-in-out);
+}
+.hdr-notif__markall:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.hdr-notif__error {
+  padding: var(--space-xs) var(--space-md);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+  font-size: var(--text-xs);
+  color: var(--color-negative);
+}
+
+.hdr-notif__list {
+  max-height: min(56vh, 340px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-rule-2) transparent;
+}
+
+.hdr-notif__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-xs);
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  border: 0;
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+  background: transparent;
+  text-align: left;
+  transition: background-color var(--dur-short) var(--ease-in-out);
+}
+.hdr-notif__row:hover { background: var(--color-paper-2); }
+.hdr-notif__row.is-unread { background: var(--color-accent-wash); }
+.hdr-notif__row.is-unread:hover {
+  background: color-mix(in oklab, var(--color-accent) 14%, var(--color-paper));
+}
+
+.hdr-notif__flag {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  margin-top: var(--space-2xs);
+  border-radius: 1px;
+  background: var(--color-rule-2);
+}
+.hdr-notif__row.is-unread .hdr-notif__flag { background: var(--color-accent); }
+
+.hdr-notif__body {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.hdr-notif__row-title {
+  font: 500 var(--text-sm)/1.3 var(--font-display);
+  color: var(--color-ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hdr-notif__row.is-unread .hdr-notif__row-title { color: var(--color-ink); font-weight: 600; }
+
+.hdr-notif__message {
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--color-muted);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.hdr-notif__time {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.hdr-notif__row.is-unread .hdr-notif__time { color: var(--color-accent-deep); }
+
+.hdr-notif__skeleton {
+  display: flex;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+.hdr-notif__skel-dot { width: 5px; height: 5px; flex: none; margin-top: var(--space-2xs); border-radius: 1px; }
+.hdr-notif__skel-lines { display: grid; gap: var(--space-2xs); flex: 1; }
+.hdr-notif__skel-title { width: 46%; height: 10px; }
+.hdr-notif__skel-line { width: 82%; height: 8px; }
+
+.hdr-notif__empty {
+  padding: var(--space-lg) var(--space-md);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--color-muted);
+}
+
+.hdr-notif__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-md);
+  border-top: var(--rule-hair) solid var(--color-rule);
+  background: var(--color-paper-2);
+  font: 500 var(--text-xs)/1.5 var(--font-body);
+  color: var(--color-accent-deep);
+  transition: background-color var(--dur-short) var(--ease-in-out), color var(--dur-short) var(--ease-in-out);
+}
+.hdr-notif__foot:hover { color: var(--color-accent); background: var(--color-paper-3); }
+.hdr-notif__foot svg {
+  width: 14px;
+  height: 14px;
+  transition: transform var(--dur-short) var(--ease-out);
+}
+.hdr-notif__foot:hover svg { transform: translateX(3px); }
+
+/* ── Header: account menu ────────────────────────────────────────────────── */
+
+.ui-menu.hdr-menu {
+  position: absolute;
+  top: calc(100% + var(--space-xs));
+  right: 0;
+  z-index: var(--z-dropdown);
+  width: 248px;
+}
+
+.hdr-menu__head {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-xs) var(--space-sm) var(--space-sm);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.hdr-menu__name {
+  font: 600 var(--text-sm)/1.3 var(--font-display);
+  color: var(--color-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hdr-menu__role {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+
+.hdr-menu__items { display: grid; gap: var(--space-3xs); padding-top: var(--space-2xs); }
+.hdr-menu__items .ui-menu__item {
+  border: 0;
+  background: transparent;
+}
+
+/* ── Drawer (below 62rem) ────────────────────────────────────────────────── */
+
+@media (max-width: 61.99rem) {
+  .shell { --shell-pad: var(--space-md); }
+
+  .shell-rail {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(var(--shell-w), 86vw);
+    z-index: var(--z-modal);
+    border-right: 0;
+    box-shadow: var(--shadow-lift-strong);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform var(--dur-short) var(--ease-out), visibility var(--dur-short) linear;
+  }
+  .shell.is-drawer-open .shell-rail { transform: none; visibility: visible; }
+
+  .rail-close { display: grid; }
+  .ui-icon-btn.hdr-menu-toggle { display: grid; }
+
+  .shell-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--z-modal) - 1);
+    background: var(--color-scrim);
+    animation: shell-fade var(--dur-short) var(--ease-out) both;
+  }
+
+  .ui-menu.hdr-jump,
+  .ui-menu.hdr-notif,
+  .ui-menu.hdr-menu {
+    position: fixed;
+    top: calc(var(--head-h) + var(--space-2xs));
+    left: var(--shell-pad);
+    right: var(--shell-pad);
+    width: auto;
+    margin-left: auto;
+  }
+
+  .ui-menu.hdr-jump,
+  .ui-menu.hdr-notif { max-width: 360px; }
+  .ui-menu.hdr-menu { max-width: 248px; }
+
+  /* The sheet stays reachable from the account menu at tablet width. */
+  .hdr-search { width: 196px; }
+}
+
+@media (max-width: 47.99rem) {
+  .ui-tag.hdr-role,
+  .hdr-user__name { display: none; }
+  .ui-icon-btn.hdr-keys { display: none; }
+  .hdr-search {
+    width: 40px;
+    padding-inline: 0;
+    justify-content: center;
+  }
+  .hdr-search__label,
+  .hdr-search__kbd { display: none; }
+  .hdr-user { padding: 0 var(--space-2xs); }
+}
+
+@media (max-width: 40rem) {
+  .hdr-crumbs { display: none; }
+
+  .rail-head { padding-inline: var(--space-sm); }
+  .rail-nav { padding-block: var(--space-2xs) var(--space-md); }
+  .rail-group + .rail-group { margin-top: var(--space-md); }
+}
+
+@keyframes shell-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── The mark: cobalt, cut corners, the same one the landing nav uses ────── */
+
+.shell-mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  font: 600 var(--text-md)/1 var(--font-display);
+  border-radius: var(--radius-input) var(--space-3xs) var(--radius-input) var(--space-3xs);
+  box-shadow: var(--shadow-inset-highlight);
+}
+@supports (corner-shape: bevel) {
+  .shell-mark {
+    border-radius: var(--cut) var(--space-3xs) var(--cut) var(--space-3xs);
+    corner-shape: bevel round bevel round;
+  }
+}
+
+.shell-mark--lg {
+  width: var(--space-xl);
+  height: var(--space-xl);
+  font-size: var(--text-lg);
+  border-radius: var(--radius-card) var(--space-3xs) var(--radius-card) var(--space-3xs);
+}
+
+/* ── Boot loader: the register opens ─────────────────────────────────────── */
+
+.shell-loader {
+  position: fixed;
+  inset: 0;
+  /* Above the route rail, which is `--z-toast + 10`. */
+  z-index: calc(var(--z-toast) + 20);
+  display: grid;
+  place-items: center;
+  padding: var(--space-lg);
+  overflow: hidden;
+  background: var(--color-paper);
+  color: var(--color-ink-2);
+  font-family: var(--font-body);
+  animation: shell-fade var(--dur-short) var(--ease-out) both;
+}
+
+/* The app mounts underneath while this fades: the book leaves, the page is already there. */
+/* A keyframe, not a transition: `shell-fade` fills both ends of opacity, and an
+   animation outranks a transition, so the leaving state needs its own. */
+.shell-loader.is-leaving {
+  pointer-events: none;
+  animation: shell-fade-out 240ms var(--ease-in-out) both;
+}
+
+@keyframes shell-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.shell-loader--inline {
+  position: relative;
+  inset: auto;
+  min-height: 62vh;
+  padding: var(--space-xl) var(--space-lg);
+  overflow: visible;
+  background: transparent;
+}
+
+.shell-loader__inner {
+  display: grid;
+  place-items: center;
+}
+
+/* ── The book ────────────────────────────────────────────────────────────── */
+
+.shell-book {
+  /* A hardcover swings about 116° on its spine — far enough to read as open,
+     close enough that the leaf never leaves the screen on a phone. */
+  --book-open: -116deg;
+  /* As the cover swings left it adds width on that side, so the scene drifts
+     with it and the open spread stays optically centred. */
+  --book-lean: 21%;
+  --ease-book: cubic-bezier(0.34, 0.05, 0.24, 1);
+  position: relative;
+  width: min(340px, calc(100vw - 80px));
+  perspective: 1500px;
+  perspective-origin: 34% 42%;
+  animation: shell-book-lean var(--dur-slow) var(--ease-book) 90ms both;
+}
+
+/* The page: the sheet the report is printed on. */
+.shell-book__page {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 284px;
+  padding: var(--space-xl) var(--space-md);
+  background:
+    linear-gradient(to right, color-mix(in oklch, var(--color-graphite) 7%, transparent), transparent 14%),
+    var(--color-sheet);
+  border: var(--rule-hair) solid var(--color-rule-2);
+  box-shadow: var(--shadow-lift);
+}
+
+/* The leaves under the top sheet, read as a hairline stack on the fore-edge. */
+.shell-book__page::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  right: -4px;
+  width: 4px;
+  background: repeating-linear-gradient(
+    to right,
+    var(--color-rule-2) 0 1px,
+    var(--color-paper-2) 1px 2px
+  );
+}
+
+/* The cover: a leaf with an outside face and an inside face, hinged on the spine. */
+.shell-book__leaf {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  transform-style: preserve-3d;
+  transform-origin: left center;
+  animation: shell-book-open 620ms var(--ease-book) 80ms both;
+  will-change: transform;
+}
+
+.shell-book__face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  border: var(--rule-hair) solid var(--color-accent-edge);
+  border-radius: 2px var(--radius-card) var(--radius-card) 2px;
+}
+
+.shell-book__face--out {
+  display: block;
+  background:
+    linear-gradient(118deg, color-mix(in oklch, var(--color-accent-deep) 26%, transparent), transparent 58%),
+    var(--color-accent);
+  transform: translateZ(0.6px);
+  box-shadow: var(--shadow-lift-strong);
+}
+
+/* The hinge: a dark spine strip and the highlight where the board turns. */
+.shell-book__face--out::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 10px;
+  background: linear-gradient(
+    to right,
+    var(--color-accent-edge),
+    var(--color-accent-deep)
+  );
+}
+
+.shell-book__face--out::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 10px;
+  width: var(--rule-hair);
+  background: color-mix(in oklch, var(--color-accent-ink) 55%, transparent);
+}
+
+.shell-book__frame {
+  position: absolute;
+  inset: 12px 12px 12px 21px;
+  border: var(--rule-hair) solid var(--color-accent-2);
+  opacity: 0.45;
+}
+
+.shell-book__face--in {
+  background: var(--color-paper-3);
+  transform: rotateY(180deg) translateZ(0.6px);
+}
+
+/* The inside of the cover: endpaper, ruled by hand. */
+.shell-book__endpaper {
+  position: absolute;
+  inset: 12px;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 21px,
+    var(--color-rule-2) 21px 22px
+  );
+  opacity: 0.6;
+}
+
+/* ── What is printed on the page ─────────────────────────────────────────── */
+
+.shell-loader__plate {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-md);
+  width: 100%;
+  text-align: center;
+  animation: shell-book-print 300ms var(--ease-out) 300ms both;
+}
+
+.shell-book__mark {
+  width: var(--space-xl);
+  height: var(--space-xl);
+  font-size: var(--text-lg);
+}
+
+.shell-loader__route {
+  font: 600 var(--text-lg)/1.1 var(--font-display);
+  letter-spacing: var(--tracking-display);
+  color: var(--color-ink);
+}
+
+.shell-loader__track {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2xs);
+  width: min(184px, 100%);
+}
+
+.shell-loader__seg {
+  position: relative;
+  height: 2px;
+  overflow: hidden;
+  background: var(--color-rule-2);
+}
+
+.shell-loader__fill {
+  position: absolute;
+  inset: 0;
+  background: var(--color-accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--dur-long) var(--ease-out);
+}
+.shell-loader__seg.is-on .shell-loader__fill { transform: none; }
+
+.shell-loader__seg.is-waiting { animation: shell-wait 1.1s var(--ease-in-out) infinite; }
+
+.shell-loader__caption {
+  max-width: 30ch;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--color-muted);
+}
+
+@keyframes shell-book-open {
+  0% { transform: rotateY(0deg); }
+  82% { transform: rotateY(calc(var(--book-open) - 7deg)); }
+  100% { transform: rotateY(var(--book-open)); }
+}
+
+@keyframes shell-book-lean {
+  from { transform: translateX(0); }
+  to { transform: translateX(var(--book-lean)); }
+}
+
+@keyframes shell-book-print {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* On a phone the cover has less room to swing. */
+@media (max-width: 560px) {
+  /* On a phone the cover has room for about a hand's width: nearly edge-on, so
+     the spread stays inside the frame instead of being cropped by the viewport. */
+  .shell-book { --book-open: -96deg; --book-lean: 4%; width: calc(100vw - 88px); }
+  .shell-book__page { min-height: 252px; padding: var(--space-lg) var(--space-sm); }
+  .shell-book__frame { inset: 10px 10px 10px 18px; }
+}
+
+@keyframes shell-wait {
+  0%, 100% { background: var(--color-rule-2); }
+  50% { background: var(--color-accent-2); }
+}
+
+/* ── Motion floor ────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .shell *,
+  .shell *::before,
+  .shell *::after,
+  .shell-loader,
+  .shell-loader * {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

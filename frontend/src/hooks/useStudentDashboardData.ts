@@ -15,40 +15,27 @@ import type {
 
 type ApiList<T> = { success?: boolean; data?: T };
 
-function memberStudentId(member: { studentId?: string | { _id?: string } }): string | undefined {
-  const sid = member.studentId;
-  if (!sid) return undefined;
-  return typeof sid === 'object' ? sid._id : sid;
-}
-
-async function resolveClubMemberships(userId: string): Promise<{
+/**
+ * The student's clubs, in one request.
+ *
+ * `scope=joined` filters on the server and every club carries its own
+ * `myMembership`, so the browser no longer fetches the whole directory and then
+ * one roster per club just to find out which ones this student belongs to.
+ */
+async function resolveClubMemberships(): Promise<{
   clubs: StudentClubMembership[];
   error?: string;
 }> {
   try {
-    const clubsRes = await api<ApiList<StudentClubMembership['club'][]>>('GET', '/clubs');
-    const allClubs = clubsRes.data ?? [];
+    const res = await api<ApiList<(StudentClubMembership['club'] & {
+      myMembership?: ClubMembershipRecord | null;
+    })[]>>('GET', '/clubs?scope=joined');
+    const joined = res.data ?? [];
 
-    const membershipResults = await Promise.all(
-      allClubs.map(async (club) => {
-        try {
-          const memRes = await api<ApiList<ClubMembershipRecord[]>>(
-            'GET',
-            `/clubs/${club._id}/members`
-          );
-          const me = (memRes.data ?? []).find((m) => memberStudentId(m) === userId);
-          if (!me) return { membership: null };
-          return { membership: { club, membership: me } };
-        } catch (err: unknown) {
-          return { membership: null, error: err instanceof Error ? err.message : 'Membership could not be checked.' };
-        }
-      })
-    );
-
-    const membershipError = membershipResults.find((result) => result.error)?.error;
     return {
-      clubs: membershipResults.flatMap((result) => result.membership ? [result.membership] : []),
-      error: membershipError ? 'Some club memberships could not be verified. Try again.' : undefined,
+      clubs: joined.flatMap((club) =>
+        club.myMembership ? [{ club, membership: club.myMembership }] : []
+      ),
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Could not load club memberships.';
@@ -110,7 +97,7 @@ export function useStudentDashboardData(user: User): StudentDashboardData {
     try {
       const [clubResult, projectResult, eventsResult, requestsResult, notifResult, countResult] =
         await Promise.all([
-          resolveClubMemberships(user._id),
+          resolveClubMemberships(),
           resolveProjects(user._id),
           api<ApiList<unknown[]>>('GET', `/events/upcoming?from=${encodeURIComponent(localDayStartIso())}`).catch((e: Error) => ({ error: e.message })),
           api<{ data?: StudentJoinRequest[] }>('GET', '/join-requests/student').catch((e: Error) => ({

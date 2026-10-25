@@ -1,4 +1,8 @@
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import { Counter, KindGlyph } from '../../ui/vis';
+import { Tooltip } from '../../ui/Tooltip';
+import { CheckIcon } from './StudentIcons';
+import { relativeTime } from './studentUtils';
 import type { StudentNotificationItem } from '../../../types/studentDashboard';
 
 interface StudentNotificationSummaryProps {
@@ -7,50 +11,73 @@ interface StudentNotificationSummaryProps {
   error?: string;
 }
 
+/**
+ * Unread notices as a row of marks rather than a list of headlines: one mark per
+ * recent notice, filled while unread, with the count and the titles on hover.
+ */
 export function StudentNotificationSummary({
   unreadCount,
   notifications,
   error,
 }: StudentNotificationSummaryProps) {
-  const navigate = useNavigate();
-  const latest = notifications[0];
+  const recent = notifications.slice(0, 6);
+  const tip = notifications
+    .slice(0, 3)
+    .map((item) => {
+      const time = relativeTime(item.createdAt);
+      return `${item.isRead ? '' : 'Unread · '}${item.title}${time ? ` (${time})` : ''}`;
+    })
+    .join(' · ');
+
+  const aria = error
+    ? 'Notices unavailable'
+    : `${unreadCount} unread ${unreadCount === 1 ? 'notice' : 'notices'} of ${notifications.length}${
+        notifications.length ? `. Open the inbox.` : ''
+      }`;
+
+  const body = (
+    <>
+      <span className="sd-signal__glyph" aria-hidden="true">
+        <KindGlyph kind="notification" size={16} />
+      </span>
+      <span className="sd-signal__label">Notices</span>
+
+      <span className="sd-signal__marks" aria-hidden="true">
+        {recent.map((item) => (
+          <span className="sd-signal__mark" data-unread={!item.isRead || undefined} key={item._id} />
+        ))}
+        {notifications.length > recent.length ? (
+          <span className="sd-signal__more">+{notifications.length - recent.length}</span>
+        ) : null}
+      </span>
+
+      <span className="sd-signal__num" aria-hidden="true">
+        {error ? (
+          <span className="sd-signal__unit">unavailable</span>
+        ) : unreadCount > 0 ? (
+          <>
+            <Counter value={unreadCount} />
+            <span className="sd-signal__unit">unread</span>
+          </>
+        ) : (
+          <>
+            <CheckIcon className="sd-signal__check" />
+            <span className="sd-signal__unit">{notifications.length > 0 ? 'all read' : 'none'}</span>
+          </>
+        )}
+      </span>
+    </>
+  );
+
+  if (error) {
+    return <div className="sd-signal__row">{body}</div>;
+  }
 
   return (
-    <section className="student-dash-notifications" aria-labelledby="student-notifications-heading">
-      <div className="student-dash-notifications-topline">
-        <div>
-          <p className="student-dash-eyebrow">Inbox</p>
-          <h2 id="student-notifications-heading">Notifications</h2>
-        </div>
-        {unreadCount > 0 ? (
-          <span className="student-dash-count" aria-label={`${unreadCount} unread notifications`}>
-            {unreadCount > 99 ? '99+' : unreadCount}
-          </span>
-        ) : null}
-      </div>
-
-      {error ? (
-        <p className="student-dash-inline-error" role="alert">{error}</p>
-      ) : latest ? (
-        <button
-          type="button"
-          className="student-dash-latest-notification"
-          onClick={() => navigate(latest.link || '/notifications')}
-        >
-          <span className={`student-dash-notification-dot${latest.isRead ? ' is-read' : ''}`} aria-hidden="true" />
-          <span className="student-dash-latest-copy">
-            <strong>{latest.title}</strong>
-            {latest.message ? <span>{latest.message}</span> : null}
-          </span>
-          <span className="student-dash-arrow" aria-hidden="true">→</span>
-        </button>
-      ) : (
-        <p className="student-dash-aside-empty">You’re all caught up. New updates will appear here.</p>
-      )}
-
-      <button type="button" className="student-dash-inbox-link" onClick={() => navigate('/notifications')}>
-        Open inbox <span aria-hidden="true">→</span>
-      </button>
-    </section>
+    <Tooltip label={tip || 'No notices'}>
+      <Link className="sd-signal__row" to="/notifications" aria-label={aria}>
+        {body}
+      </Link>
+    </Tooltip>
   );
 }
