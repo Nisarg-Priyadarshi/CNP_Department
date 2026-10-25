@@ -1,0 +1,181 @@
+/* Hallmark tokens · theme Cobalt · palette from the theme's own cool near-white
+   paper and electric cobalt signal. Roles only; no page sets a literal colour. */
+:root {
+  color-scheme: light;
+
+  --space-3xs: 2px; --space-2xs: 4px; --space-xs: 8px; --space-sm: 12px;
+  --space-md: 16px; --space-lg: 24px; --space-xl: 40px; --space-2xl: 64px;
+  --space-3xl: 96px; --space-4xl: 128px;
+
+  --text-xs: 0.75rem; --text-sm: 0.875rem; --text-md: 1rem;
+  --text-lg: 1.1875rem; --text-xl: 1.5rem; --text-2xl: 1.875rem; --text-3xl: 2.5rem;
+  --text-display-s: clamp(2.5rem, 4vw + 0.5rem, 4rem);
+  --text-display: clamp(2.875rem, 4.6vw + 0.6rem, 5rem);
+  --text-section: clamp(2rem, 2.6vw + 0.9rem, 3.25rem);
+  --text-title: clamp(1.125rem, 0.55vw + 0.875rem, 1.4375rem);
+  --text-lead: clamp(1.0625rem, 0.3vw + 0.95rem, 1.3125rem);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms; --dur-short: 220ms; --dur-long: 460ms; --dur-slow: 700ms;
+  --dur-instant: 90ms;
+
+  --color-error: oklch(52% 0.19 27);
+  --color-success: oklch(50% 0.12 150);
+
+  --container: 1440px; --gutter: 64px; --gap-columns: 32px;
+  --section-gap-s: 88px; --section-gap: 112px; --section-gap-l: 152px;
+
+  /* The signed-in shell */
+  --shell-w: 264px; --shell-w-collapsed: 76px; --head-h: 64px; --ui-max: 1380px;
+
+  --z-base: 1; --z-raised: 10; --z-dropdown: 100; --z-sticky: 200;
+  --z-sticky-nav: 300; --z-modal: 400; --z-toast: 500; --z-tooltip: 600;
+
+  /* Cobalt surfaces and ink */
+  --color-paper: oklch(98.6% 0.005 250);
+  --color-paper-2: oklch(96.2% 0.008 252);
+  --color-paper-3: oklch(93% 0.011 252);
+  --color-sheet: oklch(99.4% 0.003 250);
+  --color-ink: oklch(21% 0.028 262);
+  --color-ink-2: oklch(36% 0.022 260);
+  --color-muted: oklch(48% 0.019 258);
+  --color-rule: oklch(90% 0.009 252);
+  --color-rule-2: oklch(82% 0.013 252);
+  --color-graphite: oklch(21% 0.024 262);
+  --color-graphite-2: oklch(26.5% 0.026 262);
+  --color-graphite-ink: oklch(93% 0.01 250);
+  --color-graphite-muted: oklch(71% 0.021 256);
+
+  /* The one signal */
+  --color-accent: oklch(52% 0.19 258);
+  --color-accent-2: oklch(76% 0.13 254);
+  --color-accent-wash: oklch(95.6% 0.024 256);
+  --color-accent-ink: oklch(98.6% 0.005 250);
+  --color-accent-deep: oklch(43% 0.2 262);
+  --color-accent-edge: oklch(39% 0.16 260);
+  --color-focus: oklch(43% 0.2 262);
+
+  /* The field's glyph ramp */
+  --color-glyph-0: oklch(95.4% 0.008 252);
+  --color-glyph-1: oklch(91% 0.018 254);
+  --color-glyph-2: oklch(84% 0.038 255);
+  --color-glyph-3: oklch(72% 0.08 256);
+  --color-glyph-4: oklch(58% 0.14 257);
+
+  --color-scrim: oklch(21% 0.024 262 / 0.46);
+  --color-accent-glow: oklch(52% 0.19 258 / 0.18);
+  --color-hatch: oklch(88% 0.011 252);
+  --color-key-face: oklch(99.4% 0.003 250);
+  --color-key-edge: oklch(80% 0.016 254);
+
+  /* Status ink. Positive, waiting, refused: the three states every record carries. */
+  --color-positive: oklch(47% 0.11 158);
+  --color-positive-wash: oklch(96.4% 0.026 158);
+  --color-warning: oklch(54% 0.12 72);
+  --color-warning-wash: oklch(96.8% 0.036 86);
+  --color-negative: oklch(50% 0.18 25);
+  --color-negative-wash: oklch(96.6% 0.024 25);
+
+  --font-display: "Familjen Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+
+  --radius-card: 8px; --radius-input: 6px; --radius-pill: 999px;
+  --cell-w: 8px; --cell-h: 16px; --cut: 8px; --cut-l: 16px;
+  --rule-hair: 1px;
+  --shadow-card: 0 1px 2px oklch(21% 0.028 262 / 0.06);
+  --shadow-lift: 0 18px 40px -24px oklch(21% 0.028 262 / 0.35);
+  --shadow-lift-strong: 0 26px 54px -26px oklch(21% 0.028 262 / 0.42);
+  --shadow-inset-highlight: inset 0 1px 0 oklch(100% 0 0 / 0.25);
+  --shadow-key: 0 3px 0 0 var(--color-key-edge), 0 6px 8px -4px oklch(21% 0.028 262 / 0.28), inset 0 1px 0 oklch(100% 0 0 / 0.9);
+  --shadow-key-accent: 0 3px 0 0 var(--color-accent-edge), 0 6px 8px -4px oklch(30% 0.12 260 / 0.45), inset 0 1px 0 oklch(100% 0 0 / 0.22);
+  --shadow-key-press: inset 0 1px 2px oklch(21% 0.028 262 / 0.14);
+
+  --tracking-display: -0.028em;
+  --display-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Cobalt after dark.
+
+   The same roles, read under a dark ceiling: the paper becomes the ink, the
+   cobalt keeps its hue and gains lightness so it still signals, and the
+   graphite rail stays the darkest surface so the frame never dissolves into
+   the page. Only colours change here — every space, radius, duration and
+   font stays exactly as it is in light.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Surfaces: page, panels, wells */
+  --color-paper: oklch(17.5% 0.018 258);
+  --color-paper-2: oklch(21% 0.02 258);
+  --color-paper-3: oklch(24.5% 0.022 258);
+  --color-sheet: oklch(20.5% 0.018 258);
+
+  /* Ink */
+  --color-ink: oklch(96% 0.008 250);
+  --color-ink-2: oklch(82% 0.012 252);
+  --color-muted: oklch(68% 0.016 254);
+  --color-rule: oklch(30% 0.018 258);
+  --color-rule-2: oklch(38% 0.02 258);
+
+  /* The rail is still graphite, and still the darkest thing on the screen */
+  --color-graphite: oklch(13.5% 0.016 262);
+  --color-graphite-2: oklch(17% 0.018 262);
+  --color-graphite-ink: oklch(94% 0.008 250);
+  --color-graphite-muted: oklch(72% 0.018 256);
+
+  /* The one signal, lifted so it reads against a dark field */
+  --color-accent: oklch(56% 0.18 257);
+  --color-accent-2: oklch(78% 0.12 252);
+  --color-accent-wash: oklch(27% 0.055 258);
+  --color-accent-ink: oklch(98.6% 0.005 250);
+  --color-accent-deep: oklch(74% 0.15 254);
+  --color-accent-edge: oklch(46% 0.17 260);
+  --color-focus: oklch(70% 0.16 255);
+
+  /* The glyph ramp, inverted: faint is a dent, strongest is the signal */
+  --color-glyph-0: oklch(22% 0.02 258);
+  --color-glyph-1: oklch(27.5% 0.03 256);
+  --color-glyph-2: oklch(36% 0.055 256);
+  --color-glyph-3: oklch(50% 0.1 256);
+  --color-glyph-4: oklch(62% 0.15 255);
+
+  --color-scrim: oklch(0% 0 0 / 0.62);
+  --color-accent-glow: oklch(56% 0.18 257 / 0.32);
+  --color-hatch: oklch(28% 0.018 258);
+  --color-key-face: oklch(24% 0.02 258);
+  --color-key-edge: oklch(34% 0.022 258);
+
+  /* Status ink: brighter, on dark washes */
+  --color-positive: oklch(72% 0.13 158);
+  --color-positive-wash: oklch(25% 0.045 158);
+  --color-warning: oklch(78% 0.13 80);
+  --color-warning-wash: oklch(26% 0.05 80);
+  --color-negative: oklch(66% 0.17 25);
+  --color-negative-wash: oklch(26% 0.05 25);
+  --color-error: oklch(62% 0.19 27);
+  --color-success: oklch(68% 0.13 150);
+
+  /* Shadows: a dark room needs weight, not haze */
+  --shadow-card: 0 1px 2px oklch(0% 0 0 / 0.42);
+  --shadow-lift: 0 18px 40px -24px oklch(0% 0 0 / 0.72);
+  --shadow-lift-strong: 0 26px 54px -26px oklch(0% 0 0 / 0.8);
+  --shadow-inset-highlight: inset 0 1px 0 oklch(100% 0 0 / 0.06);
+  --shadow-key: 0 3px 0 0 var(--color-key-edge), 0 6px 8px -4px oklch(0% 0 0 / 0.55), inset 0 1px 0 oklch(100% 0 0 / 0.08);
+  --shadow-key-accent: 0 3px 0 0 var(--color-accent-edge), 0 6px 8px -4px oklch(0% 0 0 / 0.6), inset 0 1px 0 oklch(100% 0 0 / 0.16);
+  --shadow-key-press: inset 0 1px 2px oklch(0% 0 0 / 0.5);
+
+  /* The legacy sheet's own variables, so nothing renders light-on-light */
+  --bg: oklch(17.5% 0.018 258);
+  --bg-card: oklch(20.5% 0.018 258);
+  --bg-card-2: oklch(21% 0.02 258);
+  --surface: oklch(20.5% 0.018 258);
+  --border: oklch(30% 0.018 258);
+  --text: oklch(96% 0.008 250);
+  --text-muted: oklch(82% 0.012 252);
+  --text-faint: oklch(68% 0.016 254);
+}

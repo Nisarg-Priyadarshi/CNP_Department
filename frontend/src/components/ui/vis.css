@@ -1,0 +1,550 @@
+/* Hallmark · shape: instrument panel · genre: modern-minimal · theme: Cobalt
+ * marks: gauges, density grids, entity glyphs · posture: machined
+ * motion: fills only, token durations · v1
+ * ═══════════════════════════════════════════════════════════════════════════
+   vis.css · the visual instrument library
+   Owned by the visual agent; loaded globally from main.tsx after ui.css.
+
+   Gauges, density grids and glyphs for the signed-in app. Every value here is a
+   token: colour, space, type, motion. The only raw numbers are optical — stroke
+   widths and the fixed sizes of the instruments themselves, which are set by the
+   component's props, not chosen here.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Tone: one class maps a component onto the token palette ─────────────── */
+
+.vis-tone--accent { --vis-c: var(--color-accent); --vis-soft: var(--color-accent-wash); }
+.vis-tone--positive { --vis-c: var(--color-positive); --vis-soft: var(--color-positive-wash); }
+.vis-tone--warning { --vis-c: var(--color-warning); --vis-soft: var(--color-warning-wash); }
+.vis-tone--negative { --vis-c: var(--color-negative); --vis-soft: var(--color-negative-wash); }
+.vis-tone--ink { --vis-c: var(--color-ink-2); --vis-soft: var(--color-glyph-1); }
+
+/* ═══ Counter ═════════════════════════════════════════════════════════════ */
+
+.vis-counter {
+  font-family: var(--font-display);
+  font-weight: var(--display-weight);
+  letter-spacing: var(--tracking-display);
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+}
+
+/* ═══ Ring ════════════════════════════════════════════════════════════════
+   The arc starts at twelve o'clock and fills clockwise to the value, with a butt
+   cap: a machined needle, not a lozenge. The track is one glyph step off the
+   surface so an empty gauge still reads as a gauge. */
+
+.vis-ring {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--vis-size, 44px);
+  height: var(--vis-size, 44px);
+  vertical-align: middle;
+}
+
+.vis-ring svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.vis-ring__track {
+  stroke: var(--color-glyph-0);
+}
+
+.vis-ring__fill {
+  stroke: var(--vis-c, var(--color-accent));
+  stroke-linecap: butt;
+  transition: stroke-dashoffset var(--dur-long) var(--ease-out);
+}
+
+.vis-ring__center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 22%;
+  box-sizing: border-box;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.vis-ring__label {
+  font-family: var(--font-display);
+  font-weight: var(--display-weight);
+  font-size: var(--vis-label, calc(var(--vis-size, 44px) * 0.26));
+  line-height: 1;
+  letter-spacing: var(--tracking-display);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink);
+}
+
+.vis-ring__caption {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: max(8px, calc(var(--vis-size, 44px) * 0.105));
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+  color: var(--color-muted);
+}
+
+.vis-ring--sm .vis-ring__caption { display: none; }
+
+/* ═══ Sparkline ═══════════════════════════════════════════════════════════ */
+
+.vis-sparkline {
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+  line-height: 0;
+}
+
+.vis-sparkline svg {
+  display: block;
+  overflow: visible;
+}
+
+.vis-sparkline__line {
+  fill: none;
+  stroke: var(--vis-c, var(--color-accent));
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.vis-sparkline__area {
+  fill: var(--vis-soft, var(--color-accent-wash));
+  stroke: none;
+}
+
+.vis-sparkline__empty {
+  stroke: var(--color-rule-2);
+  stroke-width: 1;
+}
+
+.vis-sparkline__marker {
+  fill: var(--vis-c, var(--color-accent));
+  stroke: none;
+}
+
+.vis-sparkline__hit { fill: none; }
+
+/* ═══ Bars ════════════════════════════════════════════════════════════════
+   Each bar rests on a hairline the full width of the track: the row reads as a
+   measurement against a scale, not a pill floating in space. */
+
+.vis-bars {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.vis-bars__row {
+  display: grid;
+  grid-template-columns: minmax(0, 42%) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.vis-bars--nolabels .vis-bars__row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.vis-bars__label {
+  overflow: hidden;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.3;
+  color: var(--color-ink-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vis-bars__track {
+  position: relative;
+  display: block;
+  min-width: 0;
+  height: 12px;
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.vis-bars__fill {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: block;
+  width: 100%;
+  height: 8px;
+  background: var(--vis-c, var(--color-accent));
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--dur-long) var(--ease-out);
+}
+
+.vis-bars.is-ready .vis-bars__fill {
+  transform: scaleX(var(--vis-f, 0));
+}
+
+.vis-bars__value {
+  min-width: 2ch;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--text-xs);
+  line-height: 1;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink);
+}
+
+/* Ranked ramp: the top bar carries the deepest step. */
+.vis-bars--ramp .vis-bars__fill { background: var(--color-glyph-3); }
+.vis-bars--ramp .is-rank-4 .vis-bars__fill { background: var(--color-glyph-4); }
+.vis-bars--ramp .is-rank-3 .vis-bars__fill { background: var(--color-glyph-3); }
+.vis-bars--ramp .is-rank-2 .vis-bars__fill { background: var(--color-glyph-2); }
+.vis-bars--ramp .is-rank-1 .vis-bars__fill { background: var(--color-glyph-1); }
+
+.vis-bars--ink { --vis-c: var(--color-ink-2); }
+
+/* ═══ Heatmap ═════════════════════════════════════════════════════════════
+   Twelve weeks by default at 11px a cell: it sits in an aside without becoming
+   the page. Days run down the columns, Monday first, so a column is a week. */
+
+.vis-heat {
+  --vis-heat-cell: 11px;
+  --vis-heat-gap: 3px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--vis-heat-cell);
+  grid-template-rows: repeat(7, var(--vis-heat-cell));
+  gap: var(--vis-heat-gap);
+  width: max-content;
+}
+
+.vis-heat__cell {
+  position: relative;
+  width: var(--vis-heat-cell);
+  height: var(--vis-heat-cell);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: var(--color-glyph-0);
+  transition:
+    transform var(--dur-micro) var(--ease-out),
+    outline-color var(--dur-micro) var(--ease-in-out);
+}
+
+.vis-heat__cell[data-level='1'] { background: var(--color-glyph-1); }
+.vis-heat__cell[data-level='2'] { background: var(--color-glyph-2); }
+.vis-heat__cell[data-level='3'] { background: var(--color-glyph-3); }
+.vis-heat__cell[data-level='4'] { background: var(--color-glyph-4); }
+
+.vis-heat__cell[data-today='true'] {
+  outline: var(--rule-hair) solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+button.vis-heat__cell {
+  cursor: pointer;
+  appearance: none;
+}
+
+button.vis-heat__cell:hover {
+  z-index: 1;
+  transform: scale(1.24);
+}
+
+button.vis-heat__cell:active {
+  transform: scale(0.92);
+}
+
+button.vis-heat__cell:focus-visible {
+  z-index: 2;
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* ═══ AvatarStack ═════════════════════════════════════════════════════════
+   -8px overlap, a 2px ring in the surface colour as the separation, and the
+   hovered tile steps forward. */
+
+.vis-av-stack {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding-left: var(--space-3xs);
+  vertical-align: middle;
+}
+
+.vis-av-stack--sm { --vis-av-size: 22px; }
+.vis-av-stack--md { --vis-av-size: 28px; }
+.vis-av-stack--lg { --vis-av-size: 36px; }
+
+.vis-av {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--vis-av-size, 28px);
+  height: var(--vis-av-size, 28px);
+  margin-left: calc(var(--space-2xs) * -2);
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--color-accent-wash);
+  color: var(--color-accent-deep);
+  box-shadow: 0 0 0 2px var(--vis-av-ring, var(--color-sheet));
+  transition: transform var(--dur-short) var(--ease-out);
+}
+
+.vis-av:first-child { margin-left: 0; }
+
+/* The next tile covers the last 8px of this one, and its ring eats 2px more, so
+   the monogram has to be centred in the visible strip rather than in the tile. */
+.vis-av:not(:last-child) { padding-right: calc(var(--space-2xs) * 2); }
+
+.vis-av:hover {
+  z-index: 2;
+  transform: translateY(-2px);
+}
+
+.vis-av img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.vis-av__mono {
+  font-family: var(--font-display);
+  font-weight: var(--display-weight);
+  font-size: calc(var(--vis-av-size, 28px) * 0.38);
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.vis-av--more {
+  background: var(--color-glyph-0);
+  color: var(--color-ink-2);
+  box-shadow: 0 0 0 2px var(--vis-av-ring, var(--color-sheet));
+}
+
+.vis-av--more .vis-av__mono {
+  font-size: calc(var(--vis-av-size, 28px) * 0.34);
+  font-weight: 500;
+}
+
+/* ═══ DateTile ════════════════════════════════════════════════════════════
+   A die-cut plate: the top-right corner is sheared off, the day sits in the
+   display face. Accent tone is for now / next, once per list. */
+
+.vis-date {
+  display: inline-grid;
+  grid-template-rows: auto 1fr auto;
+  place-items: center;
+  flex: none;
+  box-sizing: border-box;
+  width: var(--vis-date-w);
+  height: var(--vis-date-h);
+  padding: 3px 0;
+  background: var(--color-paper-2);
+  color: var(--color-ink);
+  box-shadow: inset 0 0 0 1px var(--color-rule-2);
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--vis-date-cut)) 0,
+    100% var(--vis-date-cut),
+    100% 100%,
+    0 100%
+  );
+  vertical-align: middle;
+}
+
+.vis-date--sm { --vis-date-w: 38px; --vis-date-h: 42px; --vis-date-cut: 6px; --vis-date-day: 15px; }
+.vis-date--md { --vis-date-w: 46px; --vis-date-h: 52px; --vis-date-cut: 8px; --vis-date-day: 21px; }
+.vis-date--lg { --vis-date-w: 58px; --vis-date-h: 66px; --vis-date-cut: 10px; --vis-date-day: 27px; }
+
+.vis-date__wd,
+.vis-date__mo {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--color-muted);
+}
+
+.vis-date__day {
+  font-family: var(--font-display);
+  font-weight: var(--display-weight);
+  font-size: var(--vis-date-day);
+  line-height: 0.95;
+  letter-spacing: var(--tracking-display);
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+}
+
+.vis-date--accent {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  box-shadow: var(--shadow-inset-highlight);
+}
+
+.vis-date--accent .vis-date__wd,
+.vis-date--accent .vis-date__mo {
+  color: var(--color-accent-ink);
+  opacity: 0.78;
+}
+
+/* ═══ Segments ════════════════════════════════════════════════════════════
+   A scale of ticks, not a bar: the gaps are as much of the reading as the fill,
+   and a partial tick keeps its true fraction. */
+
+.vis-seg {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  min-width: 3rem;
+  height: var(--vis-seg-h, 10px);
+  vertical-align: middle;
+}
+
+.vis-seg__cell {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 2px;
+  overflow: hidden;
+  background: var(--color-paper-3);
+}
+
+.vis-seg__fill {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background: var(--vis-c, var(--color-accent));
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--dur-long) var(--ease-out);
+}
+
+.vis-seg.is-ready .vis-seg__fill {
+  transform: scaleX(var(--vis-w, 0));
+}
+
+.vis-seg--ramp .vis-seg__cell[data-level='2'] .vis-seg__fill { background: var(--color-glyph-2); }
+.vis-seg--ramp .vis-seg__cell[data-level='3'] .vis-seg__fill { background: var(--color-glyph-3); }
+.vis-seg--ramp .vis-seg__cell[data-level='4'] .vis-seg__fill { background: var(--color-glyph-4); }
+
+/* ═══ Trend ══════════════════════════════════════════════════════════════
+   Monochrome on purpose: direction is the arrow and the sign, never a colour
+   claim about whether the change is good. */
+
+.vis-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  flex: none;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--text-xs);
+  line-height: 1;
+  color: var(--color-ink);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.vis-trend svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  flex: none;
+  color: var(--color-ink-2);
+}
+
+.vis-trend__num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.vis-trend__suffix {
+  margin-left: 0.32em;
+  font-family: var(--font-body);
+  font-weight: 400;
+  color: var(--color-muted);
+}
+
+.vis-trend--flat,
+.vis-trend--flat svg { color: var(--color-muted); }
+
+/* ═══ KindGlyph ══════════════════════════════════════════════════════════ */
+
+svg.vis-glyph {
+  display: inline-block;
+  flex: none;
+  vertical-align: -0.14em;
+  stroke: currentColor;
+}
+
+/* ═══ Meter ══════════════════════════════════════════════════════════════ */
+
+.vis-meter {
+  display: block;
+  min-width: 2.5rem;
+  height: var(--vis-meter-h, 6px);
+  overflow: hidden;
+  background: var(--color-paper-3);
+  vertical-align: middle;
+}
+
+.vis-meter__fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--vis-c, var(--color-accent));
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--dur-long) var(--ease-out);
+}
+
+.vis-meter.is-ready .vis-meter__fill {
+  transform: scaleX(var(--vis-f, 0));
+}
+
+/* ═══ GridBg ═════════════════════════════════════════════════════════════
+   Dot paper for a canvas-like region. Absolutely positioned: the parent must
+   be `position: relative`, and content must sit above it. */
+
+.vis-grid-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background-image: radial-gradient(var(--color-rule-2) 1px, transparent 1px);
+  background-size: var(--vis-grid-size, 16px) var(--vis-grid-size, 16px);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* ═══ Motion floor ═══════════════════════════════════════════════════════
+   The JS in vis.tsx already renders final values under reduced motion; this is
+   the second half of the contract, for anything that slipped through. */
+
+@media (prefers-reduced-motion: reduce) {
+  .vis-ring__fill,
+  .vis-bars__fill,
+  .vis-seg__fill,
+  .vis-meter__fill,
+  .vis-av,
+  .vis-heat__cell {
+    transition-duration: 0.01ms !important;
+  }
+
+  button.vis-heat__cell:hover,
+  button.vis-heat__cell:active { transform: none; }
+}

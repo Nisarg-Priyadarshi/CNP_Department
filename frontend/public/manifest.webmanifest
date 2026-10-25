@@ -1,0 +1,29 @@
+{
+  "name": "CNP Department · GSFC University",
+  "short_name": "CNP",
+  "description": "Student Managed Clubs and GUIITAR Projects at GSFC University, Vadodara: clubs, projects, events and material requests.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "lang": "en-IN",
+  "dir": "ltr",
+  "background_color": "#f8f9fc",
+  "theme_color": "#0f1a2e",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
